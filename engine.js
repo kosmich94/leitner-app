@@ -80,7 +80,7 @@
     return shuffled(pool).sort((a, b) => state.cards[a.i].d - state.cards[b.i].d);
   }
 
-  /** Νέες κάρτες με ισορροπία: κάθε φορά από το αντικείμενο με τη μικρότερη κάλυψη. */
+  /** Νέες κάρτες τυχαία, με ισορροπία: κάθε φορά από το αντικείμενο με τη μικρότερη κάλυψη. */
   function pickNew(state, questions, count, subject) {
     const groups = new Map();
     for (const q of questions) {
@@ -91,7 +91,7 @@
       if (state.cards[q.i]) g.seen++;
       else g.fresh.push(q);
     }
-    for (const g of groups.values()) g.fresh.sort((a, b) => a.n - b.n);
+    for (const g of groups.values()) g.fresh = shuffled(g.fresh);
     const picked = [];
     while (picked.length < count) {
       let best = null;
@@ -102,7 +102,7 @@
       picked.push(best.fresh.shift());
       best.seen++;
     }
-    return picked;
+    return shuffled(picked);
   }
 
   function todayPlan(state, questions, today) {

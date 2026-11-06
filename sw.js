@@ -1,6 +1,6 @@
 /* Όλα τα αρχεία μένουν στο κινητό, ώστε η εφαρμογή να δουλεύει χωρίς internet.
    Σε κάθε αλλαγή αρχείου αυξάνεται το VERSION για να περάσει η ενημέρωση. */
-const VERSION = 'v2';
+const VERSION = 'v3';
 const CACHE = `leitner-${VERSION}`;
 const FILES = [
   './', 'index.html', 'styles.css', 'engine.js', 'app.js', 'questions.json', 'manifest.webmanifest',

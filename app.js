@@ -333,9 +333,11 @@
     const raised = limit > newPerDay
       ? `<p class="sub">Λόγω της εξέτασης, το όριο ανέβηκε αυτόματα σε ${num(limit)} τη μέρα για να προλάβεις όλη την ύλη.</p>`
       : '';
-    const install = isStandalone() ? '' : `<section class="card"><h2>Εγκατάσταση στο iPhone</h2>
+    const install = isStandalone() ? '' : `<section class="card"><h2>Εγκατάσταση στο κινητό</h2>
+      <p class="sub">Σε iPhone:</p>
       <ol class="steps"><li>Άνοιξε τη σελίδα στο Safari.</li><li>Πάτα το κουμπί Κοινή χρήση.</li>
-      <li>Επίλεξε «Προσθήκη στην οθόνη αφετηρίας».</li><li>Άνοιγε πάντα την εφαρμογή από το νέο εικονίδιο.</li></ol></section>`;
+      <li>Επίλεξε «Προσθήκη στην οθόνη αφετηρίας».</li><li>Άνοιγε πάντα την εφαρμογή από το νέο εικονίδιο.</li></ol>
+      <p class="sub">Σε Android: άνοιξε τη σελίδα στο Chrome, πάτα το μενού με τις τρεις τελείες και επίλεξε «Εγκατάσταση εφαρμογής» ή «Προσθήκη στην αρχική οθόνη».</p></section>`;
     const backup = state.lastBackup === null ? 'Δεν έχει γίνει ακόμα.' : `Τελευταίο: ${dateOf(state.lastBackup).toLocaleDateString('el-GR', { timeZone: 'UTC' })}.`;
     app.innerHTML = `<main class="screen">
       <header><h1>Ρυθμίσεις</h1></header>

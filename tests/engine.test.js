@@ -19,6 +19,27 @@ test('η πρώτη μέρα έχει 50 νέες, ισορροπημένες α
   assert.equal(new Set(s.queue.map((x) => x.q.s)).size, 11);
 });
 
+test('οι νέες είναι τυχαίες μέσα στο αντικείμενο και όχι με τη σειρά του PDF', () => {
+  const st = L.newState();
+  const picks = L.pickNew(st, questions, 40, 1).map((q) => q.n);
+  assert.equal(new Set(picks).size, 40);
+  assert.ok(picks.every((n) => n >= 1 && n <= 265));
+  assert.notDeepEqual(picks, Array.from({ length: 40 }, (_, i) => i + 1));
+  assert.ok(Math.max(...picks) > 40);
+  const other = L.pickNew(st, questions, 40, 1).map((q) => q.n);
+  assert.notDeepEqual(picks, other);
+});
+
+test('οι τυχαίες νέες καλύπτουν ισορροπημένα όλα τα αντικείμενα', () => {
+  const st = L.newState();
+  const count = {};
+  for (const q of L.pickNew(st, questions, 200)) count[q.s] = (count[q.s] || 0) + 1;
+  const totals = {};
+  for (const q of questions) totals[q.s] = (totals[q.s] || 0) + 1;
+  const shares = Object.keys(totals).map((s) => (count[s] || 0) / totals[s]);
+  assert.ok(Math.max(...shares) - Math.min(...shares) < 0.05);
+});
+
 test('σωστή απάντηση ανεβάζει κουτί και ορίζει το διάστημα', () => {
   const st = L.newState();
   const s = L.createSession(st, questions, T);
