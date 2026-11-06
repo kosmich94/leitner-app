@@ -337,7 +337,9 @@
       <p class="sub">Σε iPhone:</p>
       <ol class="steps"><li>Άνοιξε τη σελίδα στο Safari.</li><li>Πάτα το κουμπί Κοινή χρήση.</li>
       <li>Επίλεξε «Προσθήκη στην οθόνη αφετηρίας».</li><li>Άνοιγε πάντα την εφαρμογή από το νέο εικονίδιο.</li></ol>
-      <p class="sub">Σε Android: άνοιξε τη σελίδα στο Chrome, πάτα το μενού με τις τρεις τελείες και επίλεξε «Εγκατάσταση εφαρμογής» ή «Προσθήκη στην αρχική οθόνη».</p></section>`;
+      <p class="sub">Σε Android:</p>
+      <ol class="steps"><li>Άνοιξε τη σελίδα στο Chrome.</li><li>Πάτα το μενού με τις τρεις τελείες.</li>
+      <li>Επίλεξε «Εγκατάσταση εφαρμογής» ή «Προσθήκη στην αρχική οθόνη».</li><li>Άνοιγε πάντα την εφαρμογή από το νέο εικονίδιο.</li></ol></section>`;
     const backup = state.lastBackup === null ? 'Δεν έχει γίνει ακόμα.' : `Τελευταίο: ${dateOf(state.lastBackup).toLocaleDateString('el-GR', { timeZone: 'UTC' })}.`;
     app.innerHTML = `<main class="screen">
       <header><h1>Ρυθμίσεις</h1></header>
