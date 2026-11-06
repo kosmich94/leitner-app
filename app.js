@@ -8,6 +8,17 @@
   const NEGATION = /(?<!\p{L})(ΔΕΝ|Δεν|δεν|ΕΚΤΟΣ|Εκτός|εκτός|ΛΑΘΟΣ|λάθος|Λάθος|εσφαλμέν\p{L}*|λανθασμέν\p{L}*)(?!\p{L})/gu;
   const LETTERS = ['α', 'β', 'γ', 'δ'];
   const BOX_LABELS = ['Νέες', '1', '2', '3', '4', '5', '★'];
+  const THEMES = [['auto', 'Αυτόματο'], ['light', 'Φωτεινό'], ['dark', 'Σκούρο']];
+  const icon = (paths) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+  const ICONS = {
+    home: icon('<rect x="4" y="5" width="16" height="16" rx="3"/><path d="M4 10h16M8 3v4M16 3v4M9 15.5l2 2 4-4"/>'),
+    progress: icon('<path d="M5 20v-6M12 20V5M19 20v-9"/>'),
+    settings: icon('<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>'),
+    close: icon('<path d="M6 6l12 12M18 6L6 18"/>'),
+    check: icon('<path d="M5 12.5l4.5 4.5L19 7.5"/>'),
+    cross: icon('<path d="M6 6l12 12M18 6L6 18"/>'),
+    seal: icon('<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.7 2.7L16 9.8"/>'),
+  };
 
   const app = document.getElementById('app');
   const toastEl = document.getElementById('toast');
@@ -59,24 +70,35 @@
     toastEl.hidden = false;
   }
 
+  function applyTheme() {
+    const choice = state.settings.theme;
+    const dark = choice === 'dark' || (choice !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    document.querySelector('meta[name="theme-color"]').content = dark ? '#000000' : '#f2f2f7';
+  }
+
+  function ring(percent) {
+    const length = 2 * Math.PI * 50;
+    return `<div class="ring"><svg viewBox="0 0 112 112" aria-hidden="true"><circle class="bg" cx="56" cy="56" r="50"/>
+      <circle class="fg" cx="56" cy="56" r="50" stroke-dasharray="${length}" stroke-dashoffset="${length * (1 - percent / 100)}"/></svg><b>${percent}%</b></div>`;
+  }
+
   /* ---------- Σήμερα ---------- */
 
   function tabs() {
-    const item = (id, label) => `<button data-go="${id}" ${view === id ? 'aria-current="page"' : ''}>${label}</button>`;
+    const item = (id, label) => `<button data-go="${id}" ${view === id ? 'aria-current="page"' : ''}>${ICONS[id]}${label}</button>`;
     return `<nav class="tabs">${item('home', 'Σήμερα')}${item('progress', 'Πρόοδος')}${item('settings', 'Ρυθμίσεις')}</nav>`;
   }
 
   function boxOverview() {
     const counts = L.boxCounts(state, questions);
-    const segments = counts
-      .map((n, b) => (n ? `<span style="flex:${n};background:var(--b${b})"></span>` : ''))
-      .join('');
-    const legend = counts
-      .map((n, b) => `<div><i style="background:var(--b${b})"></i><b>${num(n)}</b>${BOX_LABELS[b]}</div>`)
-      .join('');
-    return `<section class="card"><h2>Τα κουτιά σου</h2>
-      <div class="stack" role="img" aria-label="Κατανομή ερωτήσεων στα κουτιά">${segments}</div>
-      <div class="legend">${legend}</div></section>`;
+    const boxes = counts.slice(1);
+    const max = Math.max(1, ...boxes);
+    const columns = boxes.map((n, i) => `<div class="col"><span class="num">${num(n)}</span>
+      <span class="track"><i style="height:${n ? Math.max(6, n / max * 100) : 0}%;background:var(--b${i + 1})"></i></span>
+      <span class="lab">${BOX_LABELS[i + 1]}</span></div>`).join('');
+    return `<section class="card"><div class="row-head"><h2>Τα κουτιά σου</h2>
+      <span class="sub">${plural(counts[0], 'νέα', 'νέες')}</span></div><div class="cols">${columns}</div></section>`;
   }
 
   function backupBanner() {
@@ -113,15 +135,15 @@
     const more = plan.unseen
       ? `<button class="btn" data-do="extra">Άλλες ${EXTRA_BATCH} νέες ερωτήσεις</button>`
       : '';
-    return `<section class="card"><p class="done-title">Τελείωσες για σήμερα</p>
-      <p class="sub">Οι επόμενες επαναλήψεις θα εμφανιστούν όταν έρθει η ώρα τους.</p>${more}</section>`;
+    return `<section class="card"><div class="done">${ICONS.seal}<div><p class="done-title">Τελείωσες για σήμερα</p>
+      <p class="sub">Οι επόμενες επαναλήψεις θα εμφανιστούν όταν έρθει η ώρα τους.</p></div></div>${more}</section>`;
   }
 
   function subjectList() {
     const rows = L.subjectStats(state, questions).map((row) => `
       <button class="subject" data-subject="${row.s}">
         <span class="name">${esc(subjects[row.s])}</span>
-        <span class="meta">${num(row.seen)} / ${num(row.total)}</span>
+        <span class="meta">${num(row.seen)} / ${num(row.total)}<span class="chev">›</span></span>
         <span class="bar"><i style="width:${row.seen / row.total * 100}%"></i></span>
       </button>`).join('');
     return `<section class="card"><h2>Μελέτη ανά αντικείμενο</h2><div class="subjects">${rows}</div></section>`;
@@ -201,17 +223,17 @@
     const pct = Math.min(100, session.done / session.planned * 100);
     const status = item.retry ? 'Δεύτερη προσπάθεια' : boxName(result ? result.from : card ? card.b : 0);
     const buttons = options.map((opt, i) => {
-      const sign = !result ? '' : opt.correct ? '✓' : i === study.picked ? '✕' : '';
+      const sign = !result ? '' : opt.correct ? ICONS.check : i === study.picked ? ICONS.cross : '';
       return `<button class="option ${optionClass(opt, i)}" data-pick="${i}" ${result ? 'disabled' : ''}>
         <span class="letter">${LETTERS[i]}.</span><span>${esc(opt.t)}</span><span class="sign">${sign}</span></button>`;
     }).join('');
     app.innerHTML = `<div class="study">
       <div class="study-top">
-        <div class="line"><button class="close" data-do="exit" aria-label="Έξοδος">✕</button>
-          <span>${num(session.done)} / ${num(session.planned)}</span></div>
+        <button class="close" data-do="exit" aria-label="Έξοδος">${ICONS.close}</button>
         <div class="bar"><i style="width:${pct}%"></i></div>
+        <span class="count">${num(session.done)} / ${num(session.planned)}</span>
       </div>
-      <div class="study-body">
+      <div class="study-body ${result ? '' : 'enter'}">
         <div class="tag"><b>${esc(status)}</b><span>${esc(subjects[q.s])} · Ερώτηση ${q.n}</span></div>
         <p class="stem">${highlight(q.q)}</p>
         ${q.t ? tableHtml(q.t) : ''}
@@ -245,11 +267,8 @@
     const rate = total ? Math.round(s.correct / total * 100) : 0;
     app.innerHTML = `<main class="screen">
       <header><h1>Μπράβο!</h1><p class="sub">Ολοκλήρωσες ${plural(total, 'ερώτηση', 'ερωτήσεις')}.</p></header>
-      <section class="tiles">
-        <div class="tile"><div class="val">${rate}%</div><div class="lbl">σωστά με την πρώτη</div></div>
-        <div class="tile"><div class="val">${num(s.correct)}</div><div class="lbl">ανέβηκαν κουτί</div></div>
-        <div class="tile"><div class="val">${num(s.wrong)}</div><div class="lbl">πίσω στο κουτί 1</div></div>
-      </section>
+      <section class="card hero">${ring(rate)}<div><h2>Σωστά με την πρώτη</h2>
+        <p class="sub">${plural(s.correct, 'ερώτηση ανέβηκε', 'ερωτήσεις ανέβηκαν')} κουτί και ${num(s.wrong)} γύρισαν στο κουτί 1.</p></div></section>
       <button class="btn primary" data-go="home">Τέλος</button>
     </main>`;
   }
@@ -290,10 +309,8 @@
 
     app.innerHTML = `<main class="screen">
       <header><h1>Πρόοδος</h1></header>
-      <section class="card">
-        <h2>Ετοιμότητα</h2><div class="big">${L.readiness(state, questions)}%</div>
-        <p class="sub">Έχεις δει ${num(seen)} από ${num(questions.length)} ερωτήσεις.</p>
-      </section>
+      <section class="card hero">${ring(L.readiness(state, questions))}<div><h2>Ετοιμότητα</h2>
+        <p class="sub">Έχεις δει ${num(seen)} από ${num(questions.length)} ερωτήσεις.</p></div></section>
       <section class="tiles">
         <div class="tile"><div class="val">${num(L.streak(state, t))}</div><div class="lbl">σερί ημερών</div></div>
         <div class="tile"><div class="val">${num(answered)}</div><div class="lbl">απαντήσεις σήμερα</div></div>
@@ -322,6 +339,10 @@
     const backup = state.lastBackup === null ? 'Δεν έχει γίνει ακόμα.' : `Τελευταίο: ${dateOf(state.lastBackup).toLocaleDateString('el-GR', { timeZone: 'UTC' })}.`;
     app.innerHTML = `<main class="screen">
       <header><h1>Ρυθμίσεις</h1></header>
+      <section class="card"><h2>Εμφάνιση</h2>
+        <div class="segmented" role="group" aria-label="Εμφάνιση">${THEMES.map(([id, label]) =>
+          `<button data-theme-choice="${id}" aria-pressed="${state.settings.theme === id}">${label}</button>`).join('')}</div>
+        <p class="sub">Το Αυτόματο ακολουθεί την εμφάνιση του iPhone.</p></section>
       <section class="card"><h2>Ρυθμός</h2>
         <div class="row"><span>Νέες ερωτήσεις τη μέρα</span>
           <div class="stepper"><button data-step="-10" aria-label="Μείωση">−</button><output>${num(newPerDay)}</output><button data-step="10" aria-label="Αύξηση">+</button></div></div>
@@ -374,6 +395,7 @@
       if (!confirm(`Θα αντικατασταθεί η τωρινή πρόοδος με ${plural(count, 'κάρτα', 'κάρτες')} από το αρχείο. Συνέχεια;`)) return;
       state = restored;
       save();
+      applyTheme();
       view = 'home';
       render();
       toast('Η πρόοδος επανήλθε.');
@@ -397,6 +419,7 @@
       if (!confirm('Θα διαγραφεί όλη η πρόοδος σε αυτό το iPhone. Η ενέργεια δεν αναιρείται. Συνέχεια;')) return;
       state = L.newState();
       save();
+      applyTheme();
       view = 'home';
       render();
     },
@@ -405,8 +428,13 @@
   app.addEventListener('click', (event) => {
     const el = event.target.closest('button');
     if (!el) return;
-    const { go, do: action, pick: picked, subject, step, chart, index } = el.dataset;
-    if (go) { view = go; study = null; render(); window.scrollTo(0, 0); }
+    const { go, do: action, pick: picked, subject, step, chart, index, themeChoice } = el.dataset;
+    if (themeChoice) {
+      state.settings.theme = themeChoice;
+      save();
+      applyTheme();
+      render();
+    } else if (go) { view = go; study = null; render(); window.scrollTo(0, 0); }
     else if (action) actions[action]();
     else if (picked !== undefined) pick(Number(picked));
     else if (subject) {
@@ -439,6 +467,8 @@
   function render() {
     ({ home: renderHome, study: renderStudy, summary: renderSummary, progress: renderProgress, settings: renderSettings })[view]();
   }
+
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
 
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden && view === 'home') render();
@@ -475,6 +505,7 @@
       return;
     }
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+    applyTheme();
     render();
     registerWorker();
   }

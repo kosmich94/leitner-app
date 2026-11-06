@@ -25,7 +25,7 @@
     v: 1,
     cards: {},
     daily: {},
-    settings: { newPerDay: 50, examDate: null },
+    settings: { newPerDay: 50, examDate: null, theme: 'auto' },
     lastBackup: null,
   });
 
