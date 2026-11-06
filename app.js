@@ -1,0 +1,483 @@
+/* Οθόνες της εφαρμογής. Η λογική των κουτιών βρίσκεται στο engine.js. */
+(function () {
+  'use strict';
+  const L = window.Leitner;
+  const STORE_KEY = 'leitner.state';
+  const EXTRA_BATCH = 20;
+  const BACKUP_EVERY_DAYS = 7;
+  const NEGATION = /(?<!\p{L})(ΔΕΝ|Δεν|δεν|ΕΚΤΟΣ|Εκτός|εκτός|ΛΑΘΟΣ|λάθος|Λάθος|εσφαλμέν\p{L}*|λανθασμέν\p{L}*)(?!\p{L})/gu;
+  const LETTERS = ['α', 'β', 'γ', 'δ'];
+  const BOX_LABELS = ['Νέες', '1', '2', '3', '4', '5', '★'];
+
+  const app = document.getElementById('app');
+  const toastEl = document.getElementById('toast');
+  let questions = [];
+  let subjects = {};
+  let state = L.newState();
+  let view = 'home';
+  let study = null;
+  let chartPick = {};
+
+  const today = () => L.dayNum();
+  const num = (n) => n.toLocaleString('el-GR');
+  const plural = (n, one, many) => `${num(n)} ${n === 1 ? one : many}`;
+  const esc = (t) => String(t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const boxName = (b) => (b === 0 ? 'Νέα' : b === L.MAX_BOX ? 'Κατακτημένη' : `Κουτί ${b}`);
+  const isStandalone = () => window.navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+  const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent);
+  const dateOf = (day) => new Date(day * 864e5);
+
+  function load() {
+    try {
+      const raw = localStorage.getItem(STORE_KEY);
+      if (raw) state = { ...L.newState(), ...JSON.parse(raw) };
+    } catch (err) {
+      toast('Η αποθηκευμένη πρόοδος δεν διαβάστηκε. Κάνε επαναφορά από αντίγραφο ασφαλείας.');
+    }
+  }
+
+  function save() {
+    try {
+      localStorage.setItem(STORE_KEY, JSON.stringify(state));
+    } catch (err) {
+      toast('Η πρόοδος δεν αποθηκεύτηκε. Έλεγξε τον χώρο του iPhone.');
+    }
+  }
+
+  let toastTimer;
+  function toast(message, action) {
+    clearTimeout(toastTimer);
+    toastEl.textContent = message;
+    if (action) {
+      const btn = document.createElement('button');
+      btn.textContent = action.label;
+      btn.onclick = action.run;
+      toastEl.append(btn);
+    } else {
+      toastTimer = setTimeout(() => { toastEl.hidden = true; }, 3500);
+    }
+    toastEl.hidden = false;
+  }
+
+  /* ---------- Σήμερα ---------- */
+
+  function tabs() {
+    const item = (id, label) => `<button data-go="${id}" ${view === id ? 'aria-current="page"' : ''}>${label}</button>`;
+    return `<nav class="tabs">${item('home', 'Σήμερα')}${item('progress', 'Πρόοδος')}${item('settings', 'Ρυθμίσεις')}</nav>`;
+  }
+
+  function boxOverview() {
+    const counts = L.boxCounts(state, questions);
+    const segments = counts
+      .map((n, b) => (n ? `<span style="flex:${n};background:var(--b${b})"></span>` : ''))
+      .join('');
+    const legend = counts
+      .map((n, b) => `<div><i style="background:var(--b${b})"></i><b>${num(n)}</b>${BOX_LABELS[b]}</div>`)
+      .join('');
+    return `<section class="card"><h2>Τα κουτιά σου</h2>
+      <div class="stack" role="img" aria-label="Κατανομή ερωτήσεων στα κουτιά">${segments}</div>
+      <div class="legend">${legend}</div></section>`;
+  }
+
+  function backupBanner() {
+    const seen = Object.keys(state.cards).length;
+    if (seen < 50) return '';
+    const age = state.lastBackup === null ? Infinity : today() - state.lastBackup;
+    if (age < BACKUP_EVERY_DAYS) return '';
+    return `<div class="banner">Η πρόοδός σου υπάρχει μόνο σε αυτό το iPhone. Κράτα ένα αντίγραφο ασφαλείας.
+      <button class="linkbtn" data-do="export">Δημιουργία αντιγράφου</button></div>`;
+  }
+
+  function installBanner() {
+    if (!isIOS() || isStandalone()) return '';
+    return `<div class="banner">Για να δουλεύει σαν εφαρμογή και χωρίς internet, πρόσθεσέ την στην οθόνη αφετηρίας.
+      <button class="linkbtn" data-go="settings">Δες πώς</button></div>`;
+  }
+
+  function examLine() {
+    const left = L.daysLeft(state, today());
+    if (left === null || left < 0) return '';
+    return `<p class="sub">Λειτουργία εξέτασης: ${left === 0 ? 'η εξέταση είναι σήμερα' : `απομένουν ${plural(left, 'ημέρα', 'ημέρες')}`}</p>`;
+  }
+
+  function planCard() {
+    const plan = L.todayPlan(state, questions, today());
+    if (plan.due + plan.fresh > 0) {
+      return `<section class="card">
+        <div class="plan">
+          <div><div class="big">${num(plan.due)}</div><div class="sub">${plan.due === 1 ? 'επανάληψη' : 'επαναλήψεις'}</div></div>
+          <div><div class="big">${num(plan.fresh)}</div><div class="sub">${plan.fresh === 1 ? 'νέα ερώτηση' : 'νέες ερωτήσεις'}</div></div>
+        </div>
+        <button class="btn primary" data-do="start">Ξεκίνα τη μελέτη</button></section>`;
+    }
+    const more = plan.unseen
+      ? `<button class="btn" data-do="extra">Άλλες ${EXTRA_BATCH} νέες ερωτήσεις</button>`
+      : '';
+    return `<section class="card"><p class="done-title">Τελείωσες για σήμερα</p>
+      <p class="sub">Οι επόμενες επαναλήψεις θα εμφανιστούν όταν έρθει η ώρα τους.</p>${more}</section>`;
+  }
+
+  function subjectList() {
+    const rows = L.subjectStats(state, questions).map((row) => `
+      <button class="subject" data-subject="${row.s}">
+        <span class="name">${esc(subjects[row.s])}</span>
+        <span class="meta">${num(row.seen)} / ${num(row.total)}</span>
+        <span class="bar"><i style="width:${row.seen / row.total * 100}%"></i></span>
+      </button>`).join('');
+    return `<section class="card"><h2>Μελέτη ανά αντικείμενο</h2><div class="subjects">${rows}</div></section>`;
+  }
+
+  function renderHome() {
+    const when = new Date().toLocaleDateString('el-GR', { weekday: 'long', day: 'numeric', month: 'long' });
+    app.innerHTML = `<main class="screen">
+      <header><p class="sub">${esc(when)}</p><h1>Σήμερα</h1>${examLine()}</header>
+      ${installBanner()}${backupBanner()}${planCard()}${boxOverview()}${subjectList()}
+    </main>${tabs()}`;
+  }
+
+  /* ---------- Μελέτη ---------- */
+
+  function startSession(options) {
+    const session = L.createSession(state, questions, today(), options);
+    if (!session.queue.length) return false;
+    study = { session, options: null, result: null };
+    nextCard();
+    return true;
+  }
+
+  function nextCard() {
+    const item = L.current(study.session);
+    if (!item) {
+      view = 'summary';
+      render();
+      return;
+    }
+    study.options = L.arrangeOptions(item.q);
+    study.result = null;
+    study.picked = null;
+    view = 'study';
+    render();
+    window.scrollTo(0, 0);
+  }
+
+  const highlight = (text) => esc(text).replace(NEGATION, '<mark>$1</mark>');
+
+  function tableHtml(rows) {
+    const hasHeader = rows[0][1] && !/^[\d,.]+$/.test(rows[0][1]);
+    const body = rows.map((r, i) => {
+      const cell = hasHeader && i === 0 ? 'th' : 'td';
+      return `<tr>${r.map((c) => `<${cell}>${esc(c)}</${cell}>`).join('')}</tr>`;
+    }).join('');
+    return `<table>${body}</table>`;
+  }
+
+  function optionClass(opt, index) {
+    if (!study.result) return '';
+    if (opt.correct) return 'right';
+    return index === study.picked ? 'wrong' : 'dim';
+  }
+
+  function feedback() {
+    const r = study.result;
+    if (!r) return '';
+    const wasRight = study.options[study.picked].correct;
+    let detail;
+    if (r.retry) detail = wasRight ? 'Θα την ξαναδείς αύριο' : 'Θα ξαναεμφανιστεί σε λίγο';
+    else if (wasRight) detail = `${boxName(r.from)} → ${boxName(r.to)}`;
+    else detail = 'Πίσω στο κουτί 1';
+    const undo = wasRight ? '' : '<button class="linkbtn" data-do="undo">Πάτησα λάθος</button>';
+    return `<div class="feedback" aria-live="polite">
+      <p class="verdict ${wasRight ? 'good' : 'bad'}">${wasRight ? 'Σωστά' : 'Λάθος'} <small>· ${esc(detail)}</small></p>
+      <div class="fb-actions">${undo}<button class="btn primary ${undo ? '' : 'solo'}" data-do="next">Επόμενη</button></div>
+    </div>`;
+  }
+
+  function renderStudy() {
+    const { session, options, result } = study;
+    const item = result ? study.shown : L.current(session);
+    study.shown = item;
+    const q = item.q;
+    const card = state.cards[q.i];
+    const pct = Math.min(100, session.done / session.planned * 100);
+    const status = item.retry ? 'Δεύτερη προσπάθεια' : boxName(result ? result.from : card ? card.b : 0);
+    const buttons = options.map((opt, i) => {
+      const sign = !result ? '' : opt.correct ? '✓' : i === study.picked ? '✕' : '';
+      return `<button class="option ${optionClass(opt, i)}" data-pick="${i}" ${result ? 'disabled' : ''}>
+        <span class="letter">${LETTERS[i]}.</span><span>${esc(opt.t)}</span><span class="sign">${sign}</span></button>`;
+    }).join('');
+    app.innerHTML = `<div class="study">
+      <div class="study-top">
+        <div class="line"><button class="close" data-do="exit" aria-label="Έξοδος">✕</button>
+          <span>${num(session.done)} / ${num(session.planned)}</span></div>
+        <div class="bar"><i style="width:${pct}%"></i></div>
+      </div>
+      <div class="study-body">
+        <div class="tag"><b>${esc(status)}</b><span>${esc(subjects[q.s])} · Ερώτηση ${q.n}</span></div>
+        <p class="stem">${highlight(q.q)}</p>
+        ${q.t ? tableHtml(q.t) : ''}
+        ${q.q2 ? `<p class="stem">${highlight(q.q2)}</p>` : ''}
+        <div class="options">${buttons}</div>
+      </div>
+      ${feedback()}
+    </div>`;
+  }
+
+  function pick(index) {
+    if (study.result) return;
+    study.picked = index;
+    study.shown = L.current(study.session);
+    study.result = L.answer(state, study.session, study.options[index].correct, today());
+    save();
+    render();
+  }
+
+  function undo() {
+    L.undoAnswer(state, study.session, study.result.undo);
+    study.result = null;
+    study.picked = null;
+    save();
+    render();
+  }
+
+  function renderSummary() {
+    const s = study.session;
+    const total = s.correct + s.wrong;
+    const rate = total ? Math.round(s.correct / total * 100) : 0;
+    app.innerHTML = `<main class="screen">
+      <header><h1>Μπράβο!</h1><p class="sub">Ολοκλήρωσες ${plural(total, 'ερώτηση', 'ερωτήσεις')}.</p></header>
+      <section class="tiles">
+        <div class="tile"><div class="val">${rate}%</div><div class="lbl">σωστά με την πρώτη</div></div>
+        <div class="tile"><div class="val">${num(s.correct)}</div><div class="lbl">ανέβηκαν κουτί</div></div>
+        <div class="tile"><div class="val">${num(s.wrong)}</div><div class="lbl">πίσω στο κουτί 1</div></div>
+      </section>
+      <button class="btn primary" data-go="home">Τέλος</button>
+    </main>`;
+  }
+
+  /* ---------- Πρόοδος ---------- */
+
+  function barChart(id, values, labels, describe) {
+    const max = Math.max(1, ...values);
+    const chosen = chartPick[id];
+    const bars = values.map((v, i) => `
+      <button data-chart="${id}" data-index="${i}" aria-pressed="${chosen === i}" aria-label="${esc(describe(i))}">
+        <i style="height:${v ? Math.max(3, v / max * 100) : 0}%"></i></button>`).join('');
+    const axis = labels.map((l) => `<span>${esc(l)}</span>`).join('');
+    const caption = chosen === undefined ? 'Πάτα μια μπάρα για να δεις τον αριθμό' : describe(chosen);
+    return `<div class="chart">${bars}</div><div class="axis">${axis}</div><p class="caption">${esc(caption)}</p>`;
+  }
+
+  function renderProgress() {
+    const t = today();
+    const seen = questions.filter((q) => state.cards[q.i]).length;
+    const day = L.peekDay(state, t);
+    const answered = day.n + day.r;
+    const weekday = (d) => dateOf(d).toLocaleDateString('el-GR', { weekday: 'short', timeZone: 'UTC' });
+    const longDay = (d) => dateOf(d).toLocaleDateString('el-GR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
+
+    const ahead = L.forecast(state, questions, t);
+    const aheadLabels = ahead.map((_, i) => (i === 0 ? 'Σήμ' : weekday(t + i)));
+    const past = Array.from({ length: 14 }, (_, i) => t - 13 + i);
+    const pastValues = past.map((d) => { const x = L.peekDay(state, d); return x.n + x.r; });
+    const pastLabels = past.map((d, i) => (i % 2 === 1 ? String(dateOf(d).getUTCDate()) : ''));
+
+    const rows = L.subjectStats(state, questions).sort((a, b) => a.readiness - b.readiness).map((row) => `
+      <div class="subject">
+        <span class="name">${esc(subjects[row.s])}</span>
+        <span class="meta">${row.readiness}%${row.accuracy === null ? '' : ` · ακρίβεια ${row.accuracy}%`}</span>
+        <span class="bar"><i style="width:${row.readiness}%"></i></span>
+      </div>`).join('');
+
+    app.innerHTML = `<main class="screen">
+      <header><h1>Πρόοδος</h1></header>
+      <section class="card">
+        <h2>Ετοιμότητα</h2><div class="big">${L.readiness(state, questions)}%</div>
+        <p class="sub">Έχεις δει ${num(seen)} από ${num(questions.length)} ερωτήσεις.</p>
+      </section>
+      <section class="tiles">
+        <div class="tile"><div class="val">${num(L.streak(state, t))}</div><div class="lbl">σερί ημερών</div></div>
+        <div class="tile"><div class="val">${num(answered)}</div><div class="lbl">απαντήσεις σήμερα</div></div>
+        <div class="tile"><div class="val">${answered ? `${Math.round(day.ok / answered * 100)}%` : '–'}</div><div class="lbl">σωστά σήμερα</div></div>
+      </section>
+      ${boxOverview()}
+      <section class="card"><h2>Επαναλήψεις των επόμενων 7 ημερών</h2>
+        ${barChart('ahead', ahead, aheadLabels, (i) => `${longDay(t + i)}: ${plural(ahead[i], 'επανάληψη', 'επαναλήψεις')}`)}</section>
+      <section class="card"><h2>Απαντήσεις των τελευταίων 14 ημερών</h2>
+        ${barChart('past', pastValues, pastLabels, (i) => `${longDay(past[i])}: ${plural(pastValues[i], 'απάντηση', 'απαντήσεις')}`)}</section>
+      <section class="card"><h2>Ετοιμότητα ανά αντικείμενο, από το πιο αδύναμο</h2><div class="subjects">${rows}</div></section>
+    </main>${tabs()}`;
+  }
+
+  /* ---------- Ρυθμίσεις ---------- */
+
+  function renderSettings() {
+    const { newPerDay, examDate } = state.settings;
+    const limit = L.newLimit(state, questions, today());
+    const raised = limit > newPerDay
+      ? `<p class="sub">Λόγω της εξέτασης, το όριο ανέβηκε αυτόματα σε ${num(limit)} τη μέρα για να προλάβεις όλη την ύλη.</p>`
+      : '';
+    const install = isStandalone() ? '' : `<section class="card"><h2>Εγκατάσταση στο iPhone</h2>
+      <ol class="steps"><li>Άνοιξε τη σελίδα στο Safari.</li><li>Πάτα το κουμπί Κοινή χρήση.</li>
+      <li>Επίλεξε «Προσθήκη στην οθόνη αφετηρίας».</li><li>Άνοιγε πάντα την εφαρμογή από το νέο εικονίδιο.</li></ol></section>`;
+    const backup = state.lastBackup === null ? 'Δεν έχει γίνει ακόμα.' : `Τελευταίο: ${dateOf(state.lastBackup).toLocaleDateString('el-GR', { timeZone: 'UTC' })}.`;
+    app.innerHTML = `<main class="screen">
+      <header><h1>Ρυθμίσεις</h1></header>
+      <section class="card"><h2>Ρυθμός</h2>
+        <div class="row"><span>Νέες ερωτήσεις τη μέρα</span>
+          <div class="stepper"><button data-step="-10" aria-label="Μείωση">−</button><output>${num(newPerDay)}</output><button data-step="10" aria-label="Αύξηση">+</button></div></div>
+        ${raised}</section>
+      <section class="card"><h2>Λειτουργία εξέτασης</h2>
+        <p class="sub">Όταν ανακοινωθεί η ημερομηνία, βάλε την εδώ. Οι επαναλήψεις γίνονται το πολύ κάθε 7 ημέρες, και κάθε 3 ημέρες στις τελευταίες ${L.FINAL_STRETCH_DAYS}.</p>
+        <div class="row"><label for="exam">Ημερομηνία</label><input id="exam" type="date" value="${esc(examDate || '')}"></div>
+        ${examDate ? '<button class="linkbtn" data-do="clear-exam">Κατάργηση ημερομηνίας</button>' : ''}</section>
+      ${install}
+      <section class="card"><h2>Αντίγραφο ασφαλείας</h2><p class="sub">${backup}</p>
+        <button class="btn" data-do="export">Δημιουργία αντιγράφου</button>
+        <button class="btn" data-do="import">Επαναφορά από αρχείο</button>
+        <input id="restore" type="file" accept=".json,application/json" hidden></section>
+      <section class="card"><h2>Πώς δουλεύει</h2>
+        <p class="sub">Σωστή απάντηση: η κάρτα ανεβαίνει κουτί. Λάθος: επιστρέφει στο κουτί 1.
+        Τα κουτιά 1 έως 5 επαναλαμβάνονται κάθε ${L.INTERVALS.slice(0, 5).join(', ')} ημέρες και οι κατακτημένες κάθε ${L.INTERVALS[5]}.</p></section>
+      <button class="btn danger" data-do="reset">Διαγραφή όλης της προόδου</button>
+    </main>${tabs()}`;
+  }
+
+  async function exportBackup() {
+    const payload = JSON.stringify({ app: 'leitner', exportedAt: new Date().toISOString(), state });
+    const stamp = new Date().toISOString().slice(0, 10);
+    const file = new File([payload], `leitner-backup-${stamp}.json`, { type: 'application/json' });
+    try {
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: 'Αντίγραφο Leitner' });
+      } else {
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(file);
+        link.download = file.name;
+        link.click();
+        URL.revokeObjectURL(link.href);
+      }
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+      toast('Το αντίγραφο δεν δημιουργήθηκε.');
+      return;
+    }
+    state.lastBackup = today();
+    save();
+    render();
+    toast('Το αντίγραφο δημιουργήθηκε.');
+  }
+
+  async function importBackup(file) {
+    try {
+      const restored = L.validateBackup(JSON.parse(await file.text()));
+      const count = Object.keys(restored.cards).length;
+      if (!confirm(`Θα αντικατασταθεί η τωρινή πρόοδος με ${plural(count, 'κάρτα', 'κάρτες')} από το αρχείο. Συνέχεια;`)) return;
+      state = restored;
+      save();
+      view = 'home';
+      render();
+      toast('Η πρόοδος επανήλθε.');
+    } catch (err) {
+      toast(err instanceof SyntaxError ? 'Το αρχείο δεν διαβάζεται.' : err.message);
+    }
+  }
+
+  /* ---------- Ενέργειες ---------- */
+
+  const actions = {
+    start() { startSession({}); },
+    extra() { startSession({ extraNew: EXTRA_BATCH }); },
+    next() { nextCard(); },
+    undo,
+    exit() { study = null; view = 'home'; render(); },
+    export: exportBackup,
+    import() { document.getElementById('restore').click(); },
+    'clear-exam'() { state.settings.examDate = null; save(); render(); },
+    reset() {
+      if (!confirm('Θα διαγραφεί όλη η πρόοδος σε αυτό το iPhone. Η ενέργεια δεν αναιρείται. Συνέχεια;')) return;
+      state = L.newState();
+      save();
+      view = 'home';
+      render();
+    },
+  };
+
+  app.addEventListener('click', (event) => {
+    const el = event.target.closest('button');
+    if (!el) return;
+    const { go, do: action, pick: picked, subject, step, chart, index } = el.dataset;
+    if (go) { view = go; study = null; render(); window.scrollTo(0, 0); }
+    else if (action) actions[action]();
+    else if (picked !== undefined) pick(Number(picked));
+    else if (subject) {
+      const s = Number(subject);
+      if (!startSession({ subject: s }) && !startSession({ subject: s, extraNew: EXTRA_BATCH })) {
+        toast('Δεν υπάρχει κάτι για μελέτη σε αυτό το αντικείμενο σήμερα.');
+      }
+    } else if (step) {
+      state.settings.newPerDay = Math.min(200, Math.max(10, state.settings.newPerDay + Number(step)));
+      save();
+      render();
+    } else if (chart) {
+      chartPick[chart] = Number(index);
+      const y = window.scrollY;
+      render();
+      window.scrollTo(0, y);
+    }
+  });
+
+  app.addEventListener('change', (event) => {
+    if (event.target.id === 'exam') {
+      state.settings.examDate = event.target.value || null;
+      save();
+      render();
+    } else if (event.target.id === 'restore' && event.target.files[0]) {
+      importBackup(event.target.files[0]);
+    }
+  });
+
+  function render() {
+    ({ home: renderHome, study: renderStudy, summary: renderSummary, progress: renderProgress, settings: renderSettings })[view]();
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && view === 'home') render();
+  });
+
+  function registerWorker() {
+    if (!('serviceWorker' in navigator)) return;
+    let reloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloading) return;
+      reloading = true;
+      location.reload();
+    });
+    navigator.serviceWorker.register('sw.js').then((reg) => {
+      const offer = (worker) => toast('Υπάρχει νέα έκδοση.', { label: 'Ενημέρωση', run: () => worker.postMessage('activate-update') });
+      if (reg.waiting && navigator.serviceWorker.controller) offer(reg.waiting);
+      reg.addEventListener('updatefound', () => {
+        const worker = reg.installing;
+        worker.addEventListener('statechange', () => {
+          if (worker.state === 'installed' && navigator.serviceWorker.controller) offer(worker);
+        });
+      });
+    }).catch(() => {});
+  }
+
+  async function init() {
+    load();
+    try {
+      const data = await (await fetch('questions.json')).json();
+      questions = data.questions;
+      subjects = data.subjects;
+    } catch (err) {
+      app.innerHTML = '<p class="fatal">Οι ερωτήσεις δεν φορτώθηκαν. Άνοιξε την εφαρμογή μία φορά με internet.</p>';
+      return;
+    }
+    if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+    render();
+    registerWorker();
+  }
+
+  init();
+})();
