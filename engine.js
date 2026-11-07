@@ -26,6 +26,7 @@
     cards: {},
     daily: {},
     settings: { newPerDay: 50, examDate: null, theme: 'auto' },
+    skills: {},
     lastBackup: null,
   });
 
@@ -246,6 +247,25 @@
     return count;
   }
 
+  /* Δεξιότητες: γύροι εξάσκησης εκτός κουτιών. Κάθε ερώτηση μετρά μία φορά ανά γύρο. */
+  const skillAnswers = (state, id) => state.skills[id] || {};
+
+  function skillProgress(state, part) {
+    const done = skillAnswers(state, part.id);
+    const answered = part.items.filter((q) => q.n in done);
+    return { answered: answered.length, correct: answered.filter((q) => done[q.n]).length, total: part.items.length };
+  }
+
+  const skillQueue = (state, part) => shuffled(part.items.filter((q) => !(q.n in skillAnswers(state, part.id))));
+
+  function recordSkill(state, id, n, isCorrect) {
+    state.skills[id] = { ...skillAnswers(state, id), [n]: isCorrect ? 1 : 0 };
+  }
+
+  function resetSkill(state, id) {
+    delete state.skills[id];
+  }
+
   function validateBackup(data) {
     const state = data && data.app === 'leitner' ? data.state : null;
     if (!state || typeof state.cards !== 'object' || typeof state.daily !== 'object' || !state.settings) {
@@ -261,6 +281,7 @@
   return {
     INTERVALS, MAX_BOX, FINAL_STRETCH_DAYS, dayNum, parseDay, newState, daysLeft, intervalFor, newLimit,
     peekDay, arrangeOptions, dueCards, pickNew, todayPlan, createSession, current, remaining, answer,
-    undoAnswer, boxCounts, readiness, subjectStats, forecast, streak, validateBackup,
+    undoAnswer, boxCounts, readiness, subjectStats, forecast, streak, skillProgress, skillQueue, recordSkill,
+    resetSkill, validateBackup,
   };
 });

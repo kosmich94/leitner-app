@@ -142,3 +142,25 @@ test('αντίγραφο ασφαλείας: δέχεται έγκυρο, απο
   assert.throws(() => L.validateBackup({ foo: 1 }));
   assert.throws(() => L.validateBackup({ app: 'leitner', state: { ...st, cards: { x: { b: 9, d: 1 } } } }));
 });
+
+test('οι δεξιότητες έχουν 100 ερωτήσεις με 4 επιλογές, μία σωστή και εξήγηση', () => {
+  const { parts, base } = JSON.parse(fs.readFileSync(path.join(__dirname, '../skills.json'), 'utf8'));
+  assert.equal(base, 55);
+  assert.deepEqual(parts.map((p) => p.items.length), [34, 39, 27]);
+  const items = parts.flatMap((p) => p.items);
+  assert.deepEqual(items.map((q) => q.n), Array.from({ length: 100 }, (_, i) => i + 1));
+  assert.ok(items.every((q) => q.o.length === 4 && q.a >= 0 && q.a <= 3 && q.e && (q.q || q.img)));
+  assert.ok(parts[1].items.every((q) => fs.existsSync(path.join(__dirname, '..', q.img))));
+});
+
+test('ο γύρος δεξιοτήτων συνεχίζει από όπου έμεινε και δεν επηρεάζει τα κουτιά', () => {
+  const st = L.newState();
+  const part = { id: 'x', items: [{ n: 1 }, { n: 2 }, { n: 3 }] };
+  L.recordSkill(st, 'x', 2, true);
+  L.recordSkill(st, 'x', 3, false);
+  assert.deepEqual(L.skillProgress(st, part), { answered: 2, correct: 1, total: 3 });
+  assert.deepEqual(L.skillQueue(st, part).map((q) => q.n), [1]);
+  assert.deepEqual(st.cards, {});
+  L.resetSkill(st, 'x');
+  assert.equal(L.skillQueue(st, part).length, 3);
+});

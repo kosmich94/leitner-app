@@ -11,6 +11,7 @@
   const THEMES = [['auto', 'Αυτόματο'], ['light', 'Φωτεινό'], ['dark', 'Σκούρο']];
   const icon = (paths) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
   const ICONS = {
+    skills: icon('<path d="M9.5 18h5M10.5 21h3M12 3a6 6 0 0 0-3.8 10.6c.6.5.9 1.2.9 1.9h5.8c0-.7.3-1.4.9-1.9A6 6 0 0 0 12 3z"/>'),
     home: icon('<rect x="4" y="5" width="16" height="16" rx="3"/><path d="M4 10h16M8 3v4M16 3v4M9 15.5l2 2 4-4"/>'),
     progress: icon('<path d="M5 20v-6M12 20V5M19 20v-9"/>'),
     settings: icon('<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>'),
@@ -28,6 +29,8 @@
   let view = 'home';
   let study = null;
   let chartPick = {};
+  let skillData = null;
+  let skill = null;
 
   const today = () => L.dayNum();
   const num = (n) => n.toLocaleString('el-GR');
@@ -87,7 +90,7 @@
 
   function tabs() {
     const item = (id, label) => `<button data-go="${id}" ${view === id ? 'aria-current="page"' : ''}>${ICONS[id]}${label}</button>`;
-    return `<nav class="tabs">${item('home', 'Σήμερα')}${item('progress', 'Πρόοδος')}${item('settings', 'Ρυθμίσεις')}</nav>`;
+    return `<nav class="tabs">${item('home', 'Σήμερα')}${item('skills', 'Δεξιότητες')}${item('progress', 'Πρόοδος')}${item('settings', 'Ρυθμίσεις')}</nav>`;
   }
 
   function boxOverview() {
@@ -273,6 +276,121 @@
     </main>`;
   }
 
+  /* ---------- Δεξιότητες ---------- */
+
+  const skillPart = (id) => skillData.parts.find((p) => p.id === id);
+
+  function renderSkills() {
+    if (!skillData) {
+      app.innerHTML = `<main class="screen"><header><h1>Δεξιότητες</h1></header>
+        <p class="sub">Οι ερωτήσεις δεν φορτώθηκαν. Άνοιξε την εφαρμογή μία φορά με internet.</p></main>${tabs()}`;
+      return;
+    }
+    const stats = skillData.parts.map((part) => ({ part, ...L.skillProgress(state, part) }));
+    const sum = (key) => stats.reduce((n, x) => n + x[key], 0);
+    const total = sum('total');
+    const rows = stats.map(({ part, answered, correct, total: size }) => `
+      <button class="subject" data-skill="${part.id}">
+        <span class="name">${esc(part.name)}</span>
+        <span class="meta">${num(answered)} / ${num(size)}<span class="chev">›</span></span>
+        <span class="bar"><i style="width:${answered / size * 100}%"></i></span>
+        <span class="hint">${esc(part.hint)}${answered ? ` Σωστές: ${num(correct)}.` : ''}</span>
+      </button>`).join('');
+    const verdict = sum('answered') < total ? `Ολοκλήρωσε και τα τρία μέρη για να δεις αν περνάς τη βάση των ${skillData.base}.`
+      : sum('correct') >= skillData.base ? `Πέρασες τη βάση των ${skillData.base}.` : `Είσαι κάτω από τη βάση των ${skillData.base}.`;
+    app.innerHTML = `<main class="screen">
+      <header><h1>Δεξιότητες</h1><p class="sub">${esc(skillData.source)}</p></header>
+      <section class="card hero">${ring(Math.round(sum('correct') / total * 100))}<div><h2>${num(sum('correct'))} / ${num(total)} σωστές</h2>
+        <p class="sub">${esc(verdict)}</p></div></section>
+      <section class="card"><h2>Δοκιμασίες</h2><div class="subjects">${rows}</div></section>
+      <p class="sub note">Οι εξηγήσεις δεν προέρχονται από το ΑΣΕΠ. Οι αριθμητικές ελέγχθηκαν με τις επίσημες λύσεις, ενώ στις γλωσσικές και στα σενάρια είναι ερμηνεία της σωστής απάντησης.</p>
+    </main>${tabs()}`;
+  }
+
+  function startSkill(id) {
+    const part = skillPart(id);
+    const queue = L.skillQueue(state, part);
+    skill = { part, queue, pos: 0, options: null, picked: null };
+    if (!queue.length) {
+      view = 'skillDone';
+      render();
+      return;
+    }
+    nextSkill();
+  }
+
+  function nextSkill() {
+    const q = skill.queue[skill.pos];
+    if (!q) {
+      view = 'skillDone';
+      render();
+      window.scrollTo(0, 0);
+      return;
+    }
+    skill.options = skill.part.fixed ? q.o.map((t, i) => ({ t, correct: i === q.a })) : L.arrangeOptions(q);
+    skill.picked = null;
+    view = 'skill';
+    render();
+    window.scrollTo(0, 0);
+  }
+
+  function pickSkill(index) {
+    if (skill.picked !== null) return;
+    const q = skill.queue[skill.pos];
+    skill.picked = index;
+    L.recordSkill(state, skill.part.id, q.n, skill.options[index].correct);
+    save();
+    render();
+    document.querySelector('.explain').scrollIntoView({ block: 'nearest' });
+  }
+
+  function renderSkill() {
+    const { part, options, picked } = skill;
+    const q = skill.queue[skill.pos];
+    const answered = picked !== null;
+    const stats = L.skillProgress(state, part);
+    const buttons = options.map((opt, i) => {
+      const look = !answered ? '' : opt.correct ? 'right' : i === picked ? 'wrong' : 'dim';
+      const sign = !answered ? '' : opt.correct ? ICONS.check : i === picked ? ICONS.cross : '';
+      const label = part.fixed ? `<span class="letter">${esc(opt.t)}</span>` : `<span class="letter">${LETTERS[i]}.</span><span>${esc(opt.t)}</span><span class="sign">${sign}</span>`;
+      return `<button class="option ${look}" data-skill-pick="${i}" ${answered ? 'disabled' : ''}>${label}</button>`;
+    }).join('');
+    const right = answered && options[picked].correct;
+    const rightIndex = options.findIndex((opt) => opt.correct);
+    const rightLabel = part.fixed ? options[rightIndex].t : LETTERS[rightIndex];
+    app.innerHTML = `<div class="study">
+      <div class="study-top">
+        <button class="close" data-do="skill-exit" aria-label="Έξοδος">${ICONS.close}</button>
+        <div class="bar"><i style="width:${stats.answered / stats.total * 100}%"></i></div>
+        <span class="count">${num(stats.answered)} / ${num(stats.total)}</span>
+      </div>
+      <div class="study-body ${answered ? '' : 'enter'}">
+        <div class="tag"><b>${esc(part.name)}</b><span>Ερώτηση ${q.n}</span></div>
+        ${q.img ? `<img class="puzzle" src="${esc(q.img)}" alt="Αριθμητική ερώτηση ${q.n}">` : ''}
+        ${q.q ? `<p class="stem ${q.q2 ? '' : 'long'}">${esc(q.q)}</p>` : ''}
+        ${q.q2 ? `<p class="stem">${esc(q.q2)}</p>` : ''}
+        <div class="options ${part.fixed ? 'letters' : ''}">${buttons}</div>
+        ${answered ? `<div class="explain"><b>${part.fixed ? 'Κανόνας' : 'Εξήγηση (όχι επίσημη)'}</b><p>${esc(q.e)}</p></div>` : ''}
+      </div>
+      ${answered ? `<div class="feedback" aria-live="polite">
+        <p class="verdict ${right ? 'good' : 'bad'}">${right ? 'Σωστά' : `Λάθος <small>· Σωστή η ${esc(rightLabel)}</small>`}</p>
+        <div class="fb-actions"><button class="btn primary solo" data-do="skill-next">Επόμενη</button></div>
+      </div>` : ''}
+    </div>`;
+  }
+
+  function renderSkillDone() {
+    const { part } = skill;
+    const { correct, total } = L.skillProgress(state, part);
+    app.innerHTML = `<main class="screen">
+      <header><h1>${esc(part.name)}</h1><p class="sub">Ολοκλήρωσες όλες τις ερωτήσεις αυτού του γύρου.</p></header>
+      <section class="card hero">${ring(Math.round(correct / total * 100))}<div><h2>${num(correct)} / ${num(total)} σωστές</h2>
+        <p class="sub">Ένας νέος γύρος μηδενίζει το σκορ αυτής της δοκιμασίας.</p></div></section>
+      <button class="btn" data-do="skill-restart">Νέος γύρος</button>
+      <button class="btn primary" data-go="skills">Τέλος</button>
+    </main>`;
+  }
+
   /* ---------- Πρόοδος ---------- */
 
   function barChart(id, values, labels, describe) {
@@ -416,6 +534,9 @@
     next() { nextCard(); },
     undo,
     exit() { study = null; view = 'home'; render(); },
+    'skill-next'() { skill.pos++; nextSkill(); },
+    'skill-exit'() { skill = null; view = 'skills'; render(); },
+    'skill-restart'() { L.resetSkill(state, skill.part.id); save(); startSkill(skill.part.id); },
     export: exportBackup,
     import() { document.getElementById('restore').click(); },
     'clear-exam'() { state.settings.examDate = null; save(); render(); },
@@ -432,15 +553,17 @@
   app.addEventListener('click', (event) => {
     const el = event.target.closest('button');
     if (!el) return;
-    const { go, do: action, pick: picked, subject, step, chart, index, themeChoice } = el.dataset;
+    const { go, do: action, pick: picked, subject, step, chart, index, themeChoice, skill: skillId, skillPick } = el.dataset;
     if (themeChoice) {
       state.settings.theme = themeChoice;
       save();
       applyTheme();
       render();
-    } else if (go) { view = go; study = null; render(); window.scrollTo(0, 0); }
+    } else if (go) { view = go; study = null; skill = null; render(); window.scrollTo(0, 0); }
     else if (action) actions[action]();
     else if (picked !== undefined) pick(Number(picked));
+    else if (skillId) startSkill(skillId);
+    else if (skillPick !== undefined) pickSkill(Number(skillPick));
     else if (subject) {
       const s = Number(subject);
       if (!startSession({ subject: s }) && !startSession({ subject: s, extraNew: EXTRA_BATCH })) {
@@ -469,7 +592,10 @@
   });
 
   function render() {
-    ({ home: renderHome, study: renderStudy, summary: renderSummary, progress: renderProgress, settings: renderSettings })[view]();
+    ({
+      home: renderHome, study: renderStudy, summary: renderSummary, skills: renderSkills, skill: renderSkill,
+      skillDone: renderSkillDone, progress: renderProgress, settings: renderSettings,
+    })[view]();
   }
 
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
@@ -507,6 +633,11 @@
     } catch (err) {
       app.innerHTML = '<p class="fatal">Οι ερωτήσεις δεν φορτώθηκαν. Άνοιξε την εφαρμογή μία φορά με internet.</p>';
       return;
+    }
+    try {
+      skillData = await (await fetch('skills.json')).json();
+    } catch (err) {
+      skillData = null;
     }
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
     applyTheme();
