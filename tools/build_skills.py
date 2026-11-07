@@ -180,7 +180,7 @@ def crop_verbal(doc, out):
                 continue
             x0, y0, x1, y1 = table.bbox
             top = next(c for c in table.rows[1].cells if c)[1]
-            pix = page.get_pixmap(matrix=fitz.Matrix(4, 4), clip=fitz.Rect(x0 - 1.5, top - 1.5, x1 + 1.5, y1 + 1.5), alpha=False)
+            pix = page.get_pixmap(matrix=fitz.Matrix(4, 4), clip=fitz.Rect(x0 - 1.5, top - .6, x1 + 1.5, y1 + 1.5), alpha=False)
             img = Image.open(io.BytesIO(pix.tobytes('png'))).convert('L')
             img.quantize(16).save(out / f'q{label}.png', optimize=True)
             done.add(int(label))
