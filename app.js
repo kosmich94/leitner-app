@@ -8,6 +8,9 @@
   const NEGATION = /(?<!\p{L})(ΔΕΝ|Δεν|δεν|ΕΚΤΟΣ|Εκτός|εκτός|ΛΑΘΟΣ|λάθος|Λάθος|εσφαλμέν\p{L}*|λανθασμέν\p{L}*)(?!\p{L})/gu;
   const LETTERS = ['α', 'β', 'γ', 'δ'];
   const BOX_LABELS = ['Νέες', '1', '2', '3', '4', '5', '★'];
+  // Τελευταία ενημέρωση κάθε ενότητας του Μητρώου, όπως τη δείχνει το ΑΣΕΠ.
+  const REGISTRY = [[1, '14/4/2026'], [2, '2/11/2026'], [3, '3/4/2026'], [4, '9/7/2026'], [5, '18/9/2026'], [6, '3/4/2026'],
+    [7, '3/4/2026'], [8, '3/4/2026'], [9, '3/4/2026'], [10, '3/4/2026'], [11, '3/4/2026']];
   const THEMES = [['auto', 'Αυτόματο'], ['light', 'Φωτεινό'], ['dark', 'Σκούρο']];
   const icon = (paths) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
   const ICONS = {
@@ -31,6 +34,9 @@
   let chartPick = {};
   let skillData = null;
   let skill = null;
+  let run = null;
+  let reader = null;
+  let clock = null;
 
   const today = () => L.dayNum();
   const num = (n) => n.toLocaleString('el-GR');
@@ -156,7 +162,9 @@
     const when = new Date().toLocaleDateString('el-GR', { weekday: 'long', day: 'numeric', month: 'long' });
     app.innerHTML = `<main class="screen">
       <header><p class="sub">${esc(when)}</p><h1>Σήμερα</h1>${examLine()}</header>
-      ${installBanner()}${backupBanner()}${planCard()}${boxOverview()}${subjectList()}
+      ${installBanner()}${backupBanner()}${planCard()}
+      <button class="card guide-link" data-run="knowledge"><span><b>Δοκιμαστικό γνώσεων</b><span class="sub">25 τυχαίες ερωτήσεις σε 25′, όπως στην εξέταση</span></span><span class="chev">›</span></button>
+      ${boxOverview()}${subjectList()}
     </main>${tabs()}`;
   }
 
@@ -280,31 +288,334 @@
 
   const skillPart = (id) => skillData.parts.find((p) => p.id === id);
 
+  const RUNS = {
+    knowledge: { name: 'Γνώσεις', meta: '25 ερωτήσεις', minutes: 25, count: 25 },
+    inductive: { name: 'Επαγωγικός συλλογισμός', meta: '18 ερωτήσεις, η δυσκολία προσαρμόζεται', minutes: 24, count: 18 },
+    reading: { name: 'Λεκτικός συλλογισμός', meta: '5 κείμενα, 20 δηλώσεις', minutes: 35, count: 5 },
+    triads: { name: 'Εργασιακές συμπεριφορές', meta: '76 τριάδες', minutes: 30, count: 76 },
+  };
+  const VERDICTS = ['Σωστό', 'Λάθος', 'Δεν μπορεί να απαντηθεί'];
+  const SHORT = ['Σ', 'Λ', 'Δ'];
+
+  function readingProgress() {
+    const done = state.skills.reading || {};
+    const keys = Object.keys(done);
+    return { answered: keys.length, correct: keys.reduce((n, k) => n + done[k], 0), total: skillData.reading.length };
+  }
+
+  function partRow(part) {
+    const { answered, correct, total } = L.skillProgress(state, part);
+    return `<button class="subject" data-skill="${part.id}">
+        <span class="name">${esc(part.name)}</span>
+        <span class="meta">${num(answered)} / ${num(total)}<span class="chev">›</span></span>
+        <span class="bar"><i style="width:${answered / total * 100}%"></i></span>
+        <span class="hint">${esc(part.hint)}${answered ? ` Σωστές: ${num(correct)}.` : ''}</span>
+      </button>`;
+  }
+
   function renderSkills() {
     if (!skillData) {
       app.innerHTML = `<main class="screen"><header><h1>Δεξιότητες</h1></header>
         <p class="sub">Οι ερωτήσεις δεν φορτώθηκαν. Άνοιξε την εφαρμογή μία φορά με internet.</p></main>${tabs()}`;
       return;
     }
-    const stats = skillData.parts.map((part) => ({ part, ...L.skillProgress(state, part) }));
-    const sum = (key) => stats.filter((x) => !x.part.extra).reduce((n, x) => n + x[key], 0);
-    const total = sum('total');
-    const rows = stats.map(({ part, answered, correct, total: size }) => `
-      <button class="subject" data-skill="${part.id}">
-        <span class="name">${esc(part.name)}</span>
-        <span class="meta">${num(answered)} / ${num(size)}<span class="chev">›</span></span>
-        <span class="bar"><i style="width:${answered / size * 100}%"></i></span>
-        <span class="hint">${esc(part.hint)}${answered ? ` Σωστές: ${num(correct)}.` : ''}</span>
-      </button>`).join('');
-    const verdict = sum('answered') < total ? `Ολοκλήρωσε γλωσσικό, αριθμητικό και εργασιακή αποτελεσματικότητα για να δεις αν περνάς τη βάση των ${skillData.base}.`
-      : sum('correct') >= skillData.base ? `Πέρασες τη βάση των ${skillData.base}.` : `Είσαι κάτω από τη βάση των ${skillData.base}.`;
+    const runs = Object.entries(RUNS).map(([kind, r]) => {
+      const last = L.lastExam(state, kind);
+      const result = !last ? '' : kind === 'triads' ? ` Τελευταία φορά: ${last.s === 100 ? 'ολοκληρώθηκε' : 'δεν ολοκληρώθηκε'}.` : ` Τελευταίος βαθμός: ${last.s}/100.`;
+      return `<button class="subject" data-run="${kind}">
+        <span class="name">${esc(r.name)}</span><span class="meta">${r.minutes}′<span class="chev">›</span></span>
+        <span class="hint">${esc(r.meta)}. ${kind === 'triads' ? 'Χωρίς βαθμό, για εξοικείωση με τον ρυθμό.' : 'Χωρίς επιστροφή, όπως στην εξέταση.'}${result}</span></button>`;
+    }).join('');
+    const rp = readingProgress();
+    const legacy = skillData.parts.filter((p) => p.legacy);
+    const exam = skillData.parts.filter((p) => ['verbal', 'numeric', 'work'].includes(p.id)).map((p) => L.skillProgress(state, p));
+    const examCorrect = exam.reduce((n, x) => n + x.correct, 0);
+    const examDone = exam.every((x) => x.answered === x.total);
     app.innerHTML = `<main class="screen">
-      <header><h1>Δεξιότητες</h1></header>
-      <section class="card hero">${ring(Math.round(sum('correct') / total * 100))}<div><h2>${num(sum('correct'))} / ${num(total)} σωστές</h2>
-        <p class="sub">${esc(verdict)}</p></div></section>
-      <section class="card"><h2>Δοκιμασίες</h2><div class="subjects">${rows}</div></section>
-      <p class="sub note">Οι εξηγήσεις στα γλωσσικά και στα σενάρια δεν είναι επίσημες. Ο επαγωγικός έχει 2 επίσημα παραδείγματα και ασκήσεις εξάσκησης, και δεν μετρά στο σκορ.</p>
+      <header><h1>Δεξιότητες</h1><p class="sub">Προετοιμασία για τον 3ο πανελλήνιο γραπτό διαγωνισμό</p></header>
+      <button class="card guide-link" data-go="guide"><span><b>Τι ξέρουμε για την εξέταση</b><span class="sub">Μορφή, χρόνοι, τι είναι επίσημο και τι πιθανό</span></span><span class="chev">›</span></button>
+      <section class="card"><h2>Προσομοιώσεις με χρόνο</h2><div class="subjects">${runs}</div></section>
+      <section class="card"><h2>Εξάσκηση με εξηγήσεις</h2><div class="subjects">
+        <button class="subject" data-do="reading-start">
+          <span class="name">Λεκτικός συλλογισμός <em class="new">νέο</em></span>
+          <span class="meta">${num(rp.answered)} / ${num(rp.total)}<span class="chev">›</span></span>
+          <span class="bar"><i style="width:${rp.answered / rp.total * 100}%"></i></span>
+          <span class="hint">Κείμενο και 4 δηλώσεις: Σωστό, Λάθος ή Δεν μπορεί να απαντηθεί.${rp.answered ? ` Σωστές δηλώσεις: ${num(rp.correct)} από ${num(rp.answered * 4)}.` : ''}</span>
+        </button>
+        ${partRow(skillPart('inductive'))}${partRow(skillPart('work'))}</div></section>
+      <section class="card"><h2>Δευτερεύουσα εξάσκηση · τεστ 2022</h2>
+        <p class="sub">Δεν έχουν ανακοινωθεί για τον 3ο διαγωνισμό. Τεστ 2022 μαζί με τα σενάρια: ${num(examCorrect)} / 100${examDone ? ` · ${examCorrect >= skillData.base ? 'πάνω' : 'κάτω'} από τη βάση των ${skillData.base}` : ''}.</p>
+        <div class="subjects">${legacy.map(partRow).join('')}</div></section>
+      <p class="sub note">Τα κείμενα λεκτικού, οι τριάδες, οι ασκήσεις επαγωγικού (εκτός από 2 επίσημα παραδείγματα) και όλες οι εξηγήσεις είναι δικό μας υλικό, όχι του ΑΣΕΠ.</p>
     </main>${tabs()}`;
+  }
+
+  /* ---------- Οδηγός εξέτασης ---------- */
+
+  function renderGuide() {
+    const row = (a, b, c) => `<tr><td>${a}</td><td>${b}</td><td>${c}</td></tr>`;
+    app.innerHTML = `<main class="screen guide">
+      <header><button class="linkbtn back" data-go="skills">‹ Δεξιότητες</button><h1>Η εξέταση</h1>
+        <p class="sub">Ό,τι είναι γνωστό στις 7 Νοεμβρίου 2026. Δεν έχει βγει ακόμη η προκήρυξη.</p></header>
+      <section class="card"><h2>Επίσημα</h2><ul class="facts">
+        <li>Ο 3ος πανελλήνιος γραπτός διαγωνισμός αναμένεται το 2027, χωρίς ανακοινωμένη ημερομηνία.</li>
+        <li>Οι γνώσεις εξετάζονται από το Μητρώο Θεμάτων: 11 ενότητες, 1.988 ερωτήσεις. Όλες είναι στην εφαρμογή.</li>
+        <li>Μπαίνει νέο τεστ λεκτικού συλλογισμού, προσαρμοστικό (CAT), από το ΕΚΠΑ (ανακοίνωση ΑΣΕΠ, 15/7/2026).</li>
+        <li>Η εξέταση γίνεται σε υπολογιστή.</li></ul></section>
+      <section class="card"><h2>Πώς ήταν το 2025</h2><p class="sub">Η καλύτερη ένδειξη μέχρι να βγει η προκήρυξη.</p>
+        <table><tr><th>Δοκιμασία</th><th>Μορφή</th><th>Βάρος</th></tr>
+        ${row('Γνώσεις', '25 ερωτήσεις σε 25′', '50%')}${row('Επαγωγικός', '18 ερωτήσεις σε 24′, 5 επιλογές, CAT', '25%')}${row('Εργασιακές συμπεριφορές', '76 τριάδες σε 30′', '25%')}</table>
+        <ul class="facts"><li>Δεν μπορείς να αφήσεις ερώτηση και να γυρίσεις πίσω.</li><li>Δεν υπάρχει αρνητική βαθμολογία ούτε βάση.</li>
+        <li>Στις τριάδες, αν δεν απαντήσεις και τις 76, ο βαθμός είναι μηδέν.</li><li>Στον επαγωγικό δίνονται 10′ εξάσκησης με 5 παραδείγματα.</li></ul></section>
+      <section class="card"><h2>Πιθανά, όχι επιβεβαιωμένα</h2><ul class="facts">
+        <li>Λεκτικός: σύντομο κείμενο και 4 δηλώσεις για Σωστό, Λάθος ή Δεν μπορεί να απαντηθεί, μόνο με βάση το κείμενο (από δημοσιεύματα για τη σύμβαση).</li>
+        <li>Σενάρια εργασιακής αποτελεσματικότητας μαζί με τον λεκτικό (από δημοσιεύματα για τη σύμβαση).</li>
+        <li>Επαγωγικός και τριάδες όπως το 2025. Τα ποσοστά μπορεί να αλλάξουν με τον νέο λεκτικό.</li>
+        <li>Αριθμητικός και αναλογίες λέξεων: υπήρχαν μόνο το 2022 και δεν έχουν ανακοινωθεί.</li></ul></section>
+      <section class="card"><h2>Συμβουλές</h2><ul class="facts">
+        <li>Γνώσεις: περίπου 1 λεπτό ανά ερώτηση. Διάβασε όλες τις επιλογές πριν πατήσεις.</li>
+        <li>Επαγωγικός: περίπου 80″ ανά ερώτηση. Ψάξε πρώτα κίνηση, πλήθος, χρώμα και περιστροφή.</li>
+        <li>Λεκτικός: «Λάθος» σημαίνει ότι το κείμενο λέει το αντίθετο. «Δεν μπορεί» σημαίνει ότι το κείμενο δεν το λέει, ακόμη κι αν είναι αληθινό στην πραγματικότητα.</li>
+        <li>Τριάδες: περίπου 23″ ανά τριάδα. Απάντα με βάση το πώς δουλεύεις συνήθως και τελείωσε και τις 76.</li></ul></section>
+      <section class="card"><h2>Πηγές</h2><ul class="facts links">
+        <li><a href="https://info.asep.gr/mitroo-thematon-gnoseon" target="_blank" rel="noopener">ΑΣΕΠ: Μητρώο Θεμάτων Γνώσεων</a></li>
+        <li><a href="https://info.asep.gr/node/79348" target="_blank" rel="noopener">ΑΣΕΠ: συμφωνία με το ΕΚΠΑ για τον λεκτικό συλλογισμό</a></li>
+        <li><a href="https://info.asep.gr/node/76412" target="_blank" rel="noopener">ΑΣΕΠ: διάρκεια και βαθμολογία 1Γ/2025</a></li>
+        <li><a href="https://info.asep.gr/node/76297" target="_blank" rel="noopener">ΑΣΕΠ: δοκιμασία δεξιοτήτων 1Γ/2025</a></li></ul></section>
+    </main>${tabs()}`;
+  }
+
+  /* ---------- Λεκτικός: εξάσκηση ---------- */
+
+  function startReading() {
+    const done = state.skills.reading || {};
+    const queue = L.shuffled(skillData.reading.filter((t) => !(t.n in done)));
+    if (!queue.length) {
+      if (!confirm('Έχεις κάνει όλα τα κείμενα. Ξεκινάς νέο γύρο; Το σκορ του λεκτικού θα μηδενιστεί.')) return;
+      L.resetSkill(state, 'reading');
+      save();
+      startReading();
+      return;
+    }
+    reader = { queue, pos: 0, picks: [null, null, null, null], checked: false };
+    view = 'reading';
+    render();
+    window.scrollTo(0, 0);
+  }
+
+  function statementList(text, picks, checked, attr) {
+    return text.st.map((st, i) => {
+      const chosen = picks[i];
+      const buttons = SHORT.map((label, v) => {
+        let look = chosen === v ? 'on' : '';
+        if (checked) look = v === st.a ? 'right' : chosen === v ? 'wrong' : 'dim';
+        return `<button class="${look}" data-${attr}="${i}:${v}" ${checked ? 'disabled' : ''} aria-label="${VERDICTS[v]}">${label}</button>`;
+      }).join('');
+      const why = checked ? `<p class="why ${picks[i] === st.a ? 'good' : 'bad'}"><b>${VERDICTS[st.a]}.</b> ${esc(st.e)}</p>` : '';
+      return `<div class="statement"><p>${i + 1}. ${esc(st.s)}</p><div class="tri">${buttons}</div>${why}</div>`;
+    }).join('');
+  }
+
+  function renderReading() {
+    const text = reader.queue[reader.pos];
+    const rp = readingProgress();
+    const ready = reader.picks.every((x) => x !== null);
+    const right = reader.picks.filter((v, i) => v === text.st[i].a).length;
+    app.innerHTML = `<div class="study">
+      <div class="study-top">
+        <button class="close" data-do="reading-exit" aria-label="Έξοδος">${ICONS.close}</button>
+        <div class="bar"><i style="width:${rp.answered / rp.total * 100}%"></i></div>
+        <span class="count">${num(rp.answered)} / ${num(rp.total)}</span>
+      </div>
+      <div class="study-body ${reader.checked ? '' : 'enter'}">
+        <div class="tag"><b>Λεκτικός συλλογισμός</b><span>Επίπεδο ${text.lvl} από 3</span></div>
+        <p class="passage">${esc(text.text)}</p>
+        <p class="sub">Σ = Σωστό · Λ = Λάθος · Δ = Δεν μπορεί να απαντηθεί</p>
+        ${statementList(text, reader.picks, reader.checked, 'rpick')}
+      </div>
+      <div class="feedback">
+        ${reader.checked ? `<p class="verdict ${right === 4 ? 'good' : 'bad'}">${right} / 4 σωστές</p>` : ''}
+        <div class="fb-actions"><button class="btn primary solo" data-do="${reader.checked ? 'reading-next' : 'reading-check'}" ${ready ? '' : 'disabled'}>${reader.checked ? 'Επόμενο κείμενο' : 'Έλεγχος'}</button></div>
+      </div>
+    </div>`;
+  }
+
+  /* ---------- Προσομοιώσεις με χρόνο ---------- */
+
+  const mmss = (sec) => `${Math.floor(sec / 60)}:${String(Math.max(0, sec % 60)).padStart(2, '0')}`;
+  const secondsLeft = () => Math.max(0, Math.round((run.endAt - Date.now()) / 1000));
+
+  function tick() {
+    if (!run || run.finished) return;
+    const left = secondsLeft();
+    const el = document.querySelector('.timer');
+    if (el) {
+      el.textContent = mmss(left);
+      el.classList.toggle('low', left <= 120);
+    }
+    if (left <= 0) finishRun(true);
+  }
+
+  function startRun(kind) {
+    if (!skillData && kind !== 'knowledge') return;
+    const r = RUNS[kind];
+    run = { kind, ...r, endAt: Date.now() + r.minutes * 60e3, startedAt: Date.now(), pos: 0, results: [], level: 2, used: new Set(), choice: null, finished: false };
+    if (kind === 'knowledge') {
+      run.items = L.knowledgeExam(questions, r.count);
+      run.options = L.arrangeOptions(run.items[0]);
+    }
+    if (kind === 'triads') {
+      run.items = skillData.triads.map((t) => L.shuffled(t));
+      run.first = null;
+    }
+    if (kind === 'inductive' || kind === 'reading') nextAdaptive();
+    if (kind === 'reading') run.picks = [null, null, null, null];
+    clearInterval(clock);
+    clock = setInterval(tick, 1000);
+    view = 'run';
+    render();
+    window.scrollTo(0, 0);
+  }
+
+  function nextAdaptive() {
+    const pool = run.kind === 'inductive' ? skillPart('inductive').items : skillData.reading;
+    run.current = L.pickAdaptive(pool, run.level, run.used);
+    if (run.current) run.used.add(run.current.n);
+  }
+
+  function advance(record) {
+    run.results.push(record);
+    run.pos++;
+    run.choice = null;
+    if (run.pos >= run.count) return finishRun(false);
+    if (run.kind === 'knowledge') run.options = L.arrangeOptions(run.items[run.pos]);
+    if (run.kind === 'inductive' || run.kind === 'reading') {
+      run.level = L.nextLevel(run.level, record.ok);
+      nextAdaptive();
+      if (!run.current) return finishRun(false);
+    }
+    if (run.kind === 'reading') run.picks = [null, null, null, null];
+    if (run.kind === 'triads') run.first = null;
+    render();
+    window.scrollTo(0, 0);
+  }
+
+  function confirmRun() {
+    if (run.kind === 'knowledge') {
+      if (run.choice === null) return;
+      const opt = run.options[run.choice];
+      advance({ q: run.items[run.pos], ok: opt.correct, picked: opt.t });
+    } else if (run.kind === 'inductive') {
+      if (run.choice === null) return;
+      advance({ q: run.current, lvl: run.current.lvl, ok: run.choice === run.current.a, picked: run.choice });
+    } else if (run.kind === 'reading') {
+      if (run.picks.some((x) => x === null)) return;
+      const t = run.current;
+      const right = run.picks.filter((v, i) => v === t.st[i].a).length;
+      advance({ q: t, lvl: t.lvl, ok: right >= 3, right, picks: run.picks.slice() });
+    }
+  }
+
+  function finishRun(timeUp) {
+    if (!run || run.finished) return;
+    clearInterval(clock);
+    run.finished = true;
+    run.timeUp = timeUp;
+    run.usedSec = Math.round((Math.min(Date.now(), run.endAt) - run.startedAt) / 1000);
+    const res = run.results;
+    if (run.kind === 'knowledge') run.score = Math.round(res.filter((r) => r.ok).length / run.count * 100);
+    if (run.kind === 'inductive') run.score = L.adaptiveScore(res.concat(Array(run.count - res.length).fill({ lvl: 1, ok: false })));
+    if (run.kind === 'reading') {
+      run.right = res.reduce((n, r) => n + r.right, 0);
+      run.score = Math.round(run.right / (run.count * 4) * 100);
+    }
+    if (run.kind === 'triads') run.score = res.length === run.count ? 100 : 0;
+    L.recordExam(state, run.kind, run.score, today());
+    save();
+    view = 'runDone';
+    render();
+    window.scrollTo(0, 0);
+  }
+
+  function runTop() {
+    return `<div class="study-top">
+        <button class="close" data-do="run-exit" aria-label="Διακοπή">${ICONS.close}</button>
+        <div class="bar"><i style="width:${run.pos / run.count * 100}%"></i></div>
+        <span class="count"><span class="timer">${mmss(secondsLeft())}</span> · ${num(Math.min(run.pos + 1, run.count))}/${num(run.count)}</span>
+      </div>`;
+  }
+
+  function renderRun() {
+    let body = '';
+    let action = `<button class="btn primary solo" data-do="run-next" ${run.choice === null ? 'disabled' : ''}>Επόμενη</button>`;
+    if (run.kind === 'knowledge') {
+      const q = run.items[run.pos];
+      const options = run.options.map((opt, i) => `<button class="option ${run.choice === i ? 'chosen' : ''}" data-run-pick="${i}">
+        <span class="letter">${LETTERS[i]}.</span><span>${esc(opt.t)}</span><span class="sign"></span></button>`).join('');
+      body = `<div class="tag"><b>Γνώσεις</b><span>${esc(subjects[q.s])}</span></div><p class="stem">${esc(q.q)}</p>
+        ${q.t ? tableHtml(q.t) : ''}${q.q2 ? `<p class="stem">${esc(q.q2)}</p>` : ''}<div class="options">${options}</div>`;
+    } else if (run.kind === 'inductive') {
+      const q = run.current;
+      const options = q.o.map((t, i) => `<button class="option ${run.choice === i ? 'chosen' : ''}" data-run-pick="${i}"><span class="letter">${t}</span></button>`).join('');
+      body = `<div class="tag"><b>Επαγωγικός συλλογισμός</b><span>Βρες αυτό που λείπει</span></div>
+        <img class="puzzle" src="${esc(q.img)}" alt="Επαγωγικός συλλογισμός"><div class="options letters">${options}</div>`;
+    } else if (run.kind === 'reading') {
+      const t = run.current;
+      body = `<div class="tag"><b>Λεκτικός συλλογισμός</b><span>Μόνο με βάση το κείμενο</span></div>
+        <p class="passage">${esc(t.text)}</p><p class="sub">Σ = Σωστό · Λ = Λάθος · Δ = Δεν μπορεί να απαντηθεί</p>
+        ${statementList(t, run.picks, false, 'run-rpick')}`;
+      action = `<button class="btn primary solo" data-do="run-next" ${run.picks.every((x) => x !== null) ? '' : 'disabled'}>Επόμενο κείμενο</button>`;
+    } else {
+      const triad = run.items[run.pos];
+      const step = run.first === null ? 'Ποια δήλωση σε αντιπροσωπεύει <b>περισσότερο</b>;' : 'Από τις δύο που έμειναν, ποια σε αντιπροσωπεύει <b>περισσότερο</b>;';
+      const options = triad.map((text, i) => {
+        const gone = run.first === i;
+        return `<button class="option ${gone ? 'chosen' : ''}" data-triad="${i}" ${gone ? 'disabled' : ''}>
+          <span class="letter">${gone ? '1η' : ''}</span><span>${esc(text)}</span><span class="sign"></span></button>`;
+      }).join('');
+      body = `<div class="tag"><b>Εργασιακές συμπεριφορές</b><span>${Math.round(run.pos / run.count * 100)}% ολοκληρώθηκε</span></div>
+        <p class="stem long">${step}</p><div class="options">${options}</div>`;
+      action = '';
+    }
+    app.innerHTML = `<div class="study">${runTop()}<div class="study-body enter">${body}</div>
+      ${action ? `<div class="feedback"><div class="fb-actions">${action}</div></div>` : ''}</div>`;
+  }
+
+  function renderRunDone() {
+    const r = run;
+    const used = `Χρόνος: ${mmss(r.usedSec)} από ${r.minutes}:00${r.timeUp ? ', τελείωσε ο χρόνος' : ''}.`;
+    let summary = '';
+    let review = '';
+    if (r.kind === 'knowledge') {
+      const right = r.results.filter((x) => x.ok).length;
+      summary = `<h2>${num(right)} / ${num(r.count)} σωστές</h2><p class="sub">Βαθμός ${r.score}/100. ${used}</p>`;
+      const wrong = r.results.filter((x) => !x.ok);
+      review = wrong.length ? `<section class="card"><h2>Οι λάθος απαντήσεις</h2>${wrong.map((x) => `<div class="review"><p>${esc(x.q.q)}</p>
+        <p class="bad">Απάντησες: ${esc(x.picked)}</p><p class="good">Σωστό: ${esc(x.q.o[x.q.a])}</p></div>`).join('')}
+        <button class="btn" data-do="run-to-box">Βάλε τις λάθος στο κουτί 1</button></section>` : '';
+    } else if (r.kind === 'inductive') {
+      const right = r.results.filter((x) => x.ok).length;
+      summary = `<h2>${num(right)} / ${num(r.results.length)} σωστές</h2><p class="sub">Βαθμός με βάση τη δυσκολία: ${r.score}/100. ${used}</p>`;
+      const wrong = r.results.filter((x) => !x.ok);
+      review = wrong.length ? `<section class="card"><h2>Οι λάθος απαντήσεις</h2>${wrong.map((x) => `<div class="review"><img class="puzzle" src="${esc(x.q.img)}" alt="">
+        <p class="bad">Απάντησες: ${x.q.o[x.picked]}</p><p class="good">Σωστό: ${x.q.o[x.q.a]}. ${esc(x.q.e)}</p></div>`).join('')}</section>` : '';
+    } else if (r.kind === 'reading') {
+      summary = `<h2>${num(r.right)} / ${num(r.count * 4)} σωστές δηλώσεις</h2><p class="sub">${used}</p>`;
+      review = r.results.map((x) => `<section class="card"><p class="passage small">${esc(x.q.text)}</p>${statementList(x.q, x.picks, true, 'none')}</section>`).join('');
+    } else {
+      const done = r.results.length;
+      summary = done === r.count
+        ? `<h2>Ολοκληρώθηκε</h2><p class="sub">${used} Περίπου ${Math.round(r.usedSec / done)}″ ανά τριάδα.</p>`
+        : `<h2>${num(done)} / ${num(r.count)} τριάδες</h2><p class="sub">${used} Στην εξέταση, αν δεν ολοκληρώσεις και τις 76, ο βαθμός είναι μηδέν.</p>`;
+      review = '<section class="card"><p class="sub">Εδώ δεν υπάρχουν σωστές απαντήσεις. Η εξάσκηση είναι μόνο για τη μορφή και τον ρυθμό.</p></section>';
+    }
+    app.innerHTML = `<main class="screen">
+      <header><h1>${esc(r.name)}</h1><p class="sub">Προσομοίωση με χρόνο</p></header>
+      <section class="card hero">${ring(r.score)}<div>${summary}</div></section>
+      ${review}
+      <button class="btn" data-run="${r.kind}">Ξανά</button>
+      <button class="btn primary" data-go="${r.kind === 'knowledge' && r.from === 'home' ? 'home' : 'skills'}">Τέλος</button>
+    </main>`;
   }
 
   function startSkill(id) {
@@ -480,6 +791,11 @@
       <section class="card"><h2>Πώς δουλεύει</h2>
         <p class="sub">Σωστή απάντηση: η κάρτα ανεβαίνει κουτί. Λάθος: επιστρέφει στο κουτί 1.
         Τα κουτιά 1 έως 5 επαναλαμβάνονται κάθε ${L.INTERVALS.slice(0, 5).join(', ')} ημέρες και οι κατακτημένες κάθε ${L.INTERVALS[5]}.</p></section>
+      <section class="card"><h2>Σχετικά</h2>
+        <p class="sub">Πηγή των ερωτήσεων γνώσεων: «Μητρώο Θεμάτων Γνώσεων του ΑΣΕΠ». Τελευταία ενημέρωση κάθε ενότητας:</p>
+        <table>${REGISTRY.map(([id, d]) => `<tr><td>${esc(subjects[id] || id)}</td><td>${d}</td></tr>`).join('')}</table>
+        <p class="sub">Η εφαρμογή είναι ανεξάρτητη. Δεν είναι εφαρμογή του ΑΣΕΠ ούτε υποστηρίζεται από αυτό. Οι ερωτήσεις και οι απαντήσεις του Μητρώου δεν αλλάζουν· μόνο η σειρά των επιλογών ανακατεύεται για τη μελέτη.</p>
+        <p class="sub">Οι εξηγήσεις, τα κείμενα λεκτικού, οι τριάδες, οι ασκήσεις επαγωγικού (εκτός από 2 επίσημα παραδείγματα) και οι προσομοιώσεις είναι δικό μας περιεχόμενο. Δεν προέρχονται από το ΑΣΕΠ ούτε έχουν εγκριθεί από αυτό.</p></section>
       <button class="btn danger" data-do="reset">Διαγραφή όλης της προόδου</button>
     </main>${tabs()}`;
   }
@@ -536,6 +852,48 @@
     'skill-next'() { skill.pos++; nextSkill(); },
     'skill-exit'() { skill = null; view = 'skills'; render(); },
     'skill-restart'() { L.resetSkill(state, skill.part.id); save(); startSkill(skill.part.id); },
+    'reading-start': startReading,
+    'reading-exit'() { reader = null; view = 'skills'; render(); },
+    'reading-check'() {
+      const text = reader.queue[reader.pos];
+      const right = reader.picks.filter((v, i) => v === text.st[i].a).length;
+      state.skills.reading = { ...(state.skills.reading || {}), [text.n]: right };
+      reader.checked = true;
+      save();
+      render();
+    },
+    'reading-next'() {
+      reader.pos++;
+      if (reader.pos >= reader.queue.length) {
+        reader = null;
+        view = 'skills';
+        render();
+        toast('Τελείωσες όλα τα κείμενα αυτού του γύρου.');
+        return;
+      }
+      reader.picks = [null, null, null, null];
+      reader.checked = false;
+      render();
+      window.scrollTo(0, 0);
+    },
+    'run-next': confirmRun,
+    'run-exit'() {
+      if (!confirm('Η προσομοίωση θα σταματήσει και δεν θα αποθηκευτεί. Συνέχεια;')) return;
+      clearInterval(clock);
+      const back = run.from || 'skills';
+      run = null;
+      view = back;
+      render();
+    },
+    'run-to-box'() {
+      const t = today();
+      for (const x of run.results.filter((r) => !r.ok)) {
+        const c = state.cards[x.q.i] || { b: 1, d: t, c: 0, w: 0 };
+        state.cards[x.q.i] = { ...c, b: 1, d: t };
+      }
+      save();
+      toast('Οι λάθος ερωτήσεις μπήκαν στο κουτί 1 για σήμερα.');
+    },
     export: exportBackup,
     import() { document.getElementById('restore').click(); },
     'clear-exam'() { state.settings.examDate = null; save(); render(); },
@@ -552,16 +910,34 @@
   app.addEventListener('click', (event) => {
     const el = event.target.closest('button');
     if (!el) return;
-    const { go, do: action, pick: picked, subject, step, chart, index, themeChoice, skill: skillId, skillPick } = el.dataset;
+    const { go, do: action, pick: picked, subject, step, chart, index, themeChoice, skill: skillId, skillPick, run: runKind, runPick, rpick, runRpick, triad } = el.dataset;
     if (themeChoice) {
       state.settings.theme = themeChoice;
       save();
       applyTheme();
       render();
-    } else if (go) { view = go; study = null; skill = null; render(); window.scrollTo(0, 0); }
+    } else if (go) { view = go; study = null; skill = null; run = null; reader = null; clearInterval(clock); render(); window.scrollTo(0, 0); }
     else if (action) actions[action]();
     else if (picked !== undefined) pick(Number(picked));
     else if (skillId) startSkill(skillId);
+    else if (runKind) { const from = view === 'home' || (view === 'runDone' && run && run.from === 'home') ? 'home' : 'skills'; startRun(runKind); if (run) run.from = from; }
+    else if (runPick !== undefined) { run.choice = Number(runPick); render(); }
+    else if (rpick !== undefined) {
+      const [i, v] = rpick.split(':').map(Number);
+      reader.picks[i] = v;
+      const y = window.scrollY;
+      render();
+      window.scrollTo(0, y);
+    } else if (runRpick !== undefined) {
+      const [i, v] = runRpick.split(':').map(Number);
+      run.picks[i] = v;
+      const y = window.scrollY;
+      render();
+      window.scrollTo(0, y);
+    } else if (triad !== undefined) {
+      const i = Number(triad);
+      if (run.first === null) { run.first = i; render(); } else advance({ ok: true, order: [run.first, i] });
+    }
     else if (skillPick !== undefined) pickSkill(Number(skillPick));
     else if (subject) {
       const s = Number(subject);
@@ -593,7 +969,8 @@
   function render() {
     ({
       home: renderHome, study: renderStudy, summary: renderSummary, skills: renderSkills, skill: renderSkill,
-      skillDone: renderSkillDone, progress: renderProgress, settings: renderSettings,
+      skillDone: renderSkillDone, progress: renderProgress, settings: renderSettings, guide: renderGuide,
+      reading: renderReading, run: renderRun, runDone: renderRunDone,
     })[view]();
   }
 
@@ -601,6 +978,7 @@
 
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden && view === 'home') render();
+    if (!document.hidden && view === 'run') tick();
   });
 
   function registerWorker() {

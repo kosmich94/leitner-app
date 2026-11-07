@@ -15,7 +15,9 @@ from pathlib import Path
 import fitz
 from PIL import Image
 
-from figures import inductive_items, numeric_figure
+from figures import inductive_bank, numeric_figure
+from reading import TEXTS
+from triads import build_triads
 
 LETTERS = 'αβγδ'
 UPPER = 'ΑΒΓΔ'
@@ -199,9 +201,12 @@ def main():
     for n in NUMERIC:
         (app / 'skills' / f'q{n}.svg').write_text(numeric_figure(n), encoding='utf-8')
     inductive = []
-    for i, (tag, figure, answer, why) in enumerate(inductive_items(), start=101):
+    for i, (tag, figure, answer, why, lvl) in enumerate(inductive_bank(), start=101):
         (app / 'skills' / f'q{i}.svg').write_text(figure, encoding='utf-8')
-        inductive.append({'n': i, 'img': f'skills/q{i}.svg', 'o': list('ΑΒΓΔΕ'), 'a': answer, 'e': why, 'tag': tag})
+        inductive.append({'n': i, 'img': f'skills/q{i}.svg', 'o': list('ΑΒΓΔΕ'), 'a': answer, 'e': why, 'tag': tag, 'lvl': lvl})
+    reading = [{'n': 201 + i, 'lvl': lvl, 'text': text, 'st': [{'s': s, 'a': 'ΣΛΔ'.index(a), 'e': e} for s, a, e in statements]}
+               for i, (lvl, text, statements) in enumerate(TEXTS)]
+    assert len(reading) == 30 and all(len(r['st']) == 4 for r in reading)
 
     verbal = [{'n': n, 'img': f'skills/q{n}.png', 'o': list(UPPER), 'a': key[n], 'e': e} for n, (_, _, _, e) in VERBAL.items()]
     numeric = [{'n': n, 'img': f'skills/q{n}.svg', 'o': list(UPPER), 'a': key[n], 'e': e} for n, e in NUMERIC.items()]
@@ -212,13 +217,15 @@ def main():
     data = {
         'base': 55,
         'parts': [
-            {'id': 'verbal', 'name': 'Γλωσσικός συλλογισμός', 'hint': 'Βρες τη σχέση του πρώτου ζεύγους και συμπλήρωσε το δεύτερο.', 'fixed': True, 'items': verbal},
-            {'id': 'numeric', 'name': 'Αριθμητικός συλλογισμός', 'hint': 'Βρες τον κανόνα που συνδέει τους αριθμούς.', 'fixed': True, 'items': numeric},
-            {'id': 'work', 'name': 'Εργασιακή αποτελεσματικότητα', 'hint': 'Διάλεξε την πιο αποτελεσματική και σφαιρική αντιμετώπιση.', 'items': scenarios},
-            {'id': 'inductive', 'name': 'Επαγωγικός συλλογισμός', 'hint': 'Βρες το μοτίβο στα σχήματα και διάλεξε αυτό που λείπει.', 'fixed': True, 'extra': True, 'items': inductive},
+            {'id': 'verbal', 'name': 'Αναλογίες λέξεων', 'legacy': True, 'hint': 'Βρες τη σχέση του πρώτου ζεύγους και συμπλήρωσε το δεύτερο.', 'fixed': True, 'items': verbal},
+            {'id': 'numeric', 'name': 'Αριθμητικός συλλογισμός', 'hint': 'Βρες τον κανόνα που συνδέει τους αριθμούς.', 'fixed': True, 'legacy': True, 'items': numeric},
+            {'id': 'work', 'name': 'Σενάρια εργασιακής αποτελεσματικότητας', 'hint': 'Διάλεξε την πιο αποτελεσματική και σφαιρική αντιμετώπιση.', 'items': scenarios},
+            {'id': 'inductive', 'name': 'Επαγωγικός συλλογισμός', 'hint': 'Βρες το μοτίβο στα σχήματα και διάλεξε αυτό που λείπει.', 'fixed': True, 'items': inductive},
         ],
+        'reading': reading,
+        'triads': build_triads(),
     }
-    assert sum(len(p['items']) for p in data['parts'][:3]) == 100
+    assert sum(len(p['items']) for p in data['parts'][:3]) == 100 and len(inductive) >= 40
     (app / 'skills.json').write_text(json.dumps(data, ensure_ascii=False, separators=(',', ':')), encoding='utf-8')
 
 

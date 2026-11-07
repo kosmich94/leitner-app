@@ -145,6 +145,33 @@ th { background: var(--raised); font-weight: 600; }
 .explain b { color: var(--muted); font-size: 13px; font-weight: 600; }
 .subject .hint { grid-column: 1 / -1; color: var(--muted); font-size: 14px; }
 .note { font-size: 13px; padding: 0 4px; }
+.guide-link { display: flex; justify-content: space-between; align-items: center; text-align: left; width: 100%; }
+.guide-link > span:first-child { display: grid; gap: 2px; }
+.guide-link .chev { opacity: .55; font-size: 22px; }
+.subject .name .new { font-style: normal; font-size: 12px; font-weight: 600; color: var(--on-accent); background: var(--accent); border-radius: 999px; padding: 1px 7px; margin-left: 6px; vertical-align: 2px; }
+.guide .back { margin-bottom: 6px; padding: 0; font-size: 16px; }
+.facts { display: grid; gap: 8px; padding-left: 20px; line-height: 1.42; }
+.facts.links a { color: var(--accent); }
+.passage { background: var(--surface); border-radius: 14px; padding: 14px; line-height: 1.5; font-size: 17px; box-shadow: var(--shadow); }
+.passage.small { font-size: 15px; box-shadow: none; padding: 0; }
+.statement { background: var(--surface); border-radius: 14px; padding: 12px; display: grid; gap: 10px; box-shadow: var(--shadow); line-height: 1.4; }
+.tri { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.tri button { min-height: 44px; border-radius: 11px; background: var(--raised); font-weight: 700; color: var(--accent); border: 2px solid transparent; }
+.tri button.on { background: var(--accent); color: var(--on-accent); }
+.tri button.right { border-color: var(--good); background: var(--good-bg); color: var(--good); }
+.tri button.wrong { border-color: var(--bad); background: var(--bad-bg); color: var(--bad); }
+.tri button.dim { opacity: .45; }
+.why { font-size: 15px; }
+.why.good b { color: var(--good); }
+.why.bad b { color: var(--bad); }
+.option.chosen { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--surface)); }
+.timer { font-weight: 700; color: var(--ink); }
+.timer.low { color: var(--bad); }
+.review { border-top: 1px solid var(--line); padding-top: 10px; display: grid; gap: 4px; line-height: 1.4; }
+.review:first-of-type { border-top: 0; padding-top: 0; }
+.review .bad { color: var(--bad); }
+.review .good { color: var(--good); }
+.btn:disabled { opacity: .45; }
 .feedback {
   position: sticky; bottom: 0; background: var(--glass); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px);
   border-top: .5px solid var(--line); padding: 12px 16px calc(var(--safe-bottom) + 12px); display: grid; gap: 8px;

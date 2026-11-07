@@ -27,6 +27,7 @@
     daily: {},
     settings: { newPerDay: 50, examDate: null, theme: 'auto' },
     skills: {},
+    exams: [],
     lastBackup: null,
   });
 
@@ -266,6 +267,32 @@
     delete state.skills[id];
   }
 
+  /* Προσομοιώσεις με χρόνο. Η δυσκολία προσαρμόζεται όπως στα τεστ CAT: σωστή → δυσκολότερη, λάθος → ευκολότερη. */
+  const nextLevel = (level, isCorrect) => Math.max(1, Math.min(3, level + (isCorrect ? 1 : -1)));
+
+  function pickAdaptive(pool, level, used, rng = Math.random) {
+    for (const step of [0, 1, -1, 2, -2]) {
+      const options = pool.filter((q) => q.lvl === level + step && !used.has(q.n));
+      if (options.length) return options[Math.floor(rng() * options.length)];
+    }
+    return null;
+  }
+
+  /** Βαθμός 0-100 όπου οι δυσκολότερες σωστές μετρούν περισσότερο. */
+  function adaptiveScore(results) {
+    if (!results.length) return 0;
+    const earned = results.reduce((sum, r) => sum + (r.ok ? r.lvl : 0), 0);
+    return Math.round((earned / (results.length * 3)) * 100);
+  }
+
+  const knowledgeExam = (questions, count = 25, rng = Math.random) => shuffled(questions, rng).slice(0, count);
+
+  function recordExam(state, kind, score, today) {
+    state.exams = [...(state.exams || []), { k: kind, d: today, s: score }].slice(-60);
+  }
+
+  const lastExam = (state, kind) => (state.exams || []).filter((e) => e.k === kind).pop() || null;
+
   function validateBackup(data) {
     const state = data && data.app === 'leitner' ? data.state : null;
     if (!state || typeof state.cards !== 'object' || typeof state.daily !== 'object' || !state.settings) {
@@ -282,6 +309,6 @@
     INTERVALS, MAX_BOX, FINAL_STRETCH_DAYS, dayNum, parseDay, newState, daysLeft, intervalFor, newLimit,
     peekDay, arrangeOptions, dueCards, pickNew, todayPlan, createSession, current, remaining, answer,
     undoAnswer, boxCounts, readiness, subjectStats, forecast, streak, skillProgress, skillQueue, recordSkill,
-    resetSkill, validateBackup,
+    resetSkill, nextLevel, pickAdaptive, adaptiveScore, knowledgeExam, recordExam, lastExam, shuffled, validateBackup,
   };
 });

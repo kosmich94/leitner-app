@@ -525,3 +525,153 @@ def inductive_items():
         [poly_dots(4, 5), poly_dots(4, 4), poly_dots(3, 4), poly_dots(5, 4), poly_dots(4, 3)], 1,
         'Οι κουκκίδες είναι όσες και οι πλευρές του σχήματος, και κάθε γραμμή έχει τρίγωνο, τετράγωνο και πεντάγωνο. Λείπει τετράγωνο με 4 κουκκίδες.')
     return items
+
+
+# ---------- Επιπλέον ασκήσεις επαγωγικού με επίπεδα δυσκολίας ----------
+# Επίπεδο 1: ένας κανόνας. Επίπεδο 2: δύο κανόνες μαζί. Επίπεδο 3: τρεις κανόνες ή πίνακας 3x3.
+
+LEVELS = [1, 3, 1, 1, 1, 1, 1, 2, 2, 1, 1, 2, 2, 2, 2, 3, 2, 3, 3, 3]
+CORNERS = [(24, 24), (76, 24), (76, 76), (24, 76)]
+
+
+def ring2(black, white):
+    spots = [(0, 0), (1, 0), (2, 0), (2, 1), (2, 2), (1, 2), (0, 2), (0, 1)]
+    out = rect(40, 40, 20, 20, GREY, sw=1.8)
+    for i, (c, r) in enumerate(spots):
+        x, y = 20 + c * 20, 20 + r * 20
+        out += rect(x, y, 20, 20, sw=1.8)
+        if i == black:
+            out += circle(6.5, x + 10, y + 10, INK)
+        if i == white:
+            out += circle(6.5, x + 10, y + 10, '#fff')
+    return out
+
+
+def corner_box(deg, dot, tri):
+    """Βέλος στο κέντρο, μαύρη κουκκίδα και τρίγωνο σε γωνίες."""
+    out = arrow(deg) .replace('stroke-width="5"', 'stroke-width="4"')
+    dx, dy = CORNERS[dot]
+    out += circle(7, dx, dy, INK)
+    tx, ty = CORNERS[tri]
+    out += poly(3, 9, tx, ty + 1, '#fff')
+    return out
+
+
+def sized(r, kind='s', fill='#fff'):
+    return square(r, fill=fill) if kind == 's' else circle(r, fill=fill)
+
+
+def place(rng, correct, wrong):
+    options = wrong[:4]
+    answer = rng.randrange(5)
+    options.insert(answer, correct)
+    assert len(set(options)) == 5, 'οι επιλογές πρέπει να διαφέρουν'
+    return options, answer
+
+
+def generated_items(seed=7):
+    rng = random_module.Random(seed)
+    out = []
+
+    def seq(frames, correct, wrong, lvl, why):
+        options, answer = place(rng, correct, wrong)
+        out.append((sequence_figure(frames + [None], options), answer, why, lvl))
+
+    def mat(cells, correct, wrong, lvl, why):
+        options, answer = place(rng, correct, wrong)
+        out.append((matrix_figure(cells + [None], options), answer, why, lvl))
+
+    for start, step in ((0, 90), (45, -45), (90, 45), (180, -90)):
+        a = lambda k: arrow((start + k * step) % 360)
+        way = 'δεξιόστροφα' if step > 0 else 'αριστερόστροφα'
+        seq([a(k) for k in range(4)], a(4), [a(3), a(5), arrow((start + 4 * step + 180) % 360), arrow((start + 4 * step + 90 if abs(step) == 45 else start + 4 * step + 45) % 360)], 1,
+            f'Το βέλος στρέφεται {abs(step)}° {way} σε κάθε βήμα.')
+    for start, inc in ((2, 2), (1, 3), (11, -2)):
+        n = lambda k: start + k * inc
+        near = []
+        for v in (n(4) + 1, n(4) - 1, n(3), n(4) + 2, n(4) - 2, n(4) + 3):
+            if v > 0 and v != n(4) and v not in near:
+                near.append(v)
+        seq([dots(n(k)) for k in range(4)], dots(n(4)), [dots(v) for v in near[:4]], 1,
+            f'Οι κουκκίδες {"αυξάνονται" if inc > 0 else "μειώνονται"} κατά {abs(inc)} σε κάθε βήμα.')
+    for start, step in ((5, 1), (2, -2), (0, 2)):
+        p = lambda k: (start + k * step) % 8
+        near = []
+        for v in (p(3), p(5), p(4) + 4, p(4) + 1, p(4) - 1, p(4) + 2):
+            if v % 8 != p(4) and v % 8 not in near:
+                near.append(v % 8)
+        seq([ring(p(k)) for k in range(4)], ring(p(4)), [ring(v) for v in near[:4]], 1,
+            f'Το μαύρο κελί προχωρά {abs(step)} {"θέση" if abs(step) == 1 else "θέσεις"} {"δεξιόστροφα" if step > 0 else "αριστερόστροφα"} σε κάθε βήμα.')
+    seq([quad({0}), quad({3}), quad({2}), quad({1})], quad({0}), [quad({1}), quad({2}), quad({3}), quad({0, 3})], 1,
+        'Το μαύρο τετράγωνο κινείται αριστερόστροφα. Μετά την πάνω δεξιά θέση επιστρέφει πάνω αριστερά.')
+    seq([sized(12), sized(18), sized(24), sized(30)], sized(36), [sized(30), sized(42), sized(36, 'c'), sized(24)], 1,
+        'Το τετράγωνο μεγαλώνει σταθερά σε κάθε βήμα.')
+
+    for (b0, bs), (w0, ws) in (((0, 1), (4, -1)), ((1, 2), (7, -1)), ((6, -2), (2, 1))):
+        b = lambda k: (b0 + k * bs) % 8
+        w = lambda k: (w0 + k * ws) % 8
+        frames = [ring2(b(k), w(k)) for k in range(4)]
+        if any(b(k) == w(k) for k in range(5)):
+            continue
+        wrong = [ring2(b(4), w(3)), ring2(b(3), w(4)), ring2(w(4), b(4)), ring2(b(5), w(4))]
+        seq(frames, ring2(b(4), w(4)), wrong, 2,
+            f'Η μαύρη κουκκίδα προχωρά {abs(bs)} {"θέση" if abs(bs) == 1 else "θέσεις"} {"δεξιόστροφα" if bs > 0 else "αριστερόστροφα"} '
+            f'και η λευκή {abs(ws)} {"θέση" if abs(ws) == 1 else "θέσεις"} {"δεξιόστροφα" if ws > 0 else "αριστερόστροφα"}.')
+    for step, d0 in ((45, 2), (-90, 1)):
+        f = lambda deg, n: arrow(deg) + dots(n, 84, 16, 12, 3.4)
+        frames = [f((k * step) % 360, d0 + k) for k in range(4)]
+        good = f((4 * step) % 360, d0 + 4)
+        wrong = [f((3 * step) % 360, d0 + 4), f((4 * step) % 360, d0 + 3), f((4 * step + 180) % 360, d0 + 4), f((5 * step) % 360, d0 + 5)]
+        seq(frames, good, wrong, 2, f'Το βέλος στρέφεται {abs(step)}° {"δεξιόστροφα" if step > 0 else "αριστερόστροφα"} και οι κουκκίδες αυξάνονται κατά μία.')
+    sf = lambda sides, fill: poly(sides, 32, fill=fill, rot=-90 if sides % 2 else -90 + 180 / sides)
+    seq([sf(3, '#fff'), sf(4, INK), sf(5, '#fff'), sf(6, INK)], sf(7, '#fff'), [sf(7, INK), sf(6, '#fff'), sf(8, '#fff'), circle(32)], 2,
+        'Οι πλευρές αυξάνονται κατά μία και το χρώμα εναλλάσσεται λευκό και μαύρο.')
+
+    for deg0, dstep, d0, t0 in ((0, -90, 0, 1), (90, 90, 2, 1), (45, 90, 3, 0)):
+        st = lambda k: corner_box((deg0 + k * dstep) % 360, (d0 - k) % 4, (t0 + k) % 4)
+        good = st(4)
+        wrong = [corner_box((deg0 + 3 * dstep) % 360, (d0 - 4) % 4, (t0 + 4) % 4), corner_box((deg0 + 4 * dstep) % 360, (d0 - 3) % 4, (t0 + 4) % 4),
+                 corner_box((deg0 + 4 * dstep) % 360, (d0 - 4) % 4, (t0 + 3) % 4), corner_box((deg0 + 4 * dstep + 180) % 360, (d0 - 4) % 4, (t0 + 5) % 4)]
+        seq([st(k) for k in range(4)], good, wrong, 3,
+            f'Τρεις κανόνες μαζί: το βέλος στρέφεται {abs(dstep)}° {"δεξιόστροφα" if dstep > 0 else "αριστερόστροφα"}, '
+            'η μαύρη κουκκίδα πάει μία γωνία αριστερόστροφα και το τρίγωνο μία γωνία δεξιόστροφα.')
+    fills = {'w': '#fff', 'g': '#9a9a9a', 'b': INK}
+    for _ in range(2):
+        kinds = rng.sample(['c', 's', 't'], 3)
+        tones = rng.sample(['w', 'g', 'b'], 3)
+        cell = lambda r, c: shape(kinds[(r + c) % 3], fill=fills[tones[(r + 2 * c) % 3]])
+        cells = [cell(r, c) for r in range(3) for c in range(3)][:8]
+        good = cell(2, 2)
+        k, t = kinds[(2 + 2) % 3], tones[(2 + 4) % 3]
+        other_k = [x for x in 'cst' if x != k]
+        other_t = [x for x in 'wgb' if x != t]
+        wrong = [shape(other_k[0], fill=fills[t]), shape(k, fill=fills[other_t[0]]), shape(other_k[1], fill=fills[other_t[1]]), shape(k, fill=fills[other_t[1]])]
+        mat(cells, good, wrong, 3, 'Κάθε γραμμή και κάθε στήλη έχει μία φορά κάθε σχήμα και κάθε απόχρωση. Βρες ποιο σχήμα και ποια απόχρωση λείπουν.')
+    keys = list(SEGMENTS)
+    made = 0
+    while made < 2:
+        rows = []
+        for _ in range(3):
+            a, b = set(rng.sample(keys, 2)), set(rng.sample(keys, 2))
+            rows.append((a, b, a ^ b))
+        a, b, c = rows[2]
+        if len(c) < 2 or any(len(r[2]) == 0 for r in rows):
+            continue
+        wrong = [segs(a | b), segs(a), segs(b), segs(c ^ {rng.choice([k for k in keys if k not in c])})]
+        try:
+            cells = [segs(x) for r in rows for x in r][:8]
+            mat(cells, segs(c), wrong, 3, 'Η τρίτη στήλη κρατά μόνο τις γραμμές που υπάρχουν σε ένα από τα δύο πρώτα σχήματα· οι κοινές σβήνουν.')
+            made += 1
+        except AssertionError:
+            continue
+    return out
+
+
+import random as random_module  # noqa: E402
+
+
+def inductive_bank():
+    """Όλες οι ασκήσεις επαγωγικού: (λεζάντα, svg, θέση σωστής, εξήγηση, επίπεδο)."""
+    base = [(tag, figure, answer, why, lvl) for (tag, figure, answer, why), lvl in zip(inductive_items(), LEVELS)]
+    extra = [('Άσκηση εξάσκησης', figure, answer, why, lvl) for figure, answer, why, lvl in generated_items()]
+    return base + extra

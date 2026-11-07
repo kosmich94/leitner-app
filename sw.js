@@ -1,17 +1,18 @@
 /* Όλα τα αρχεία μένουν στο κινητό, ώστε η εφαρμογή να δουλεύει χωρίς internet.
    Σε κάθε αλλαγή αρχείου αυξάνεται το VERSION για να περάσει η ενημέρωση. */
-const VERSION = 'v7';
+const VERSION = 'v8';
 const CACHE = `leitner-${VERSION}`;
 const FILES = [
   './', 'index.html', 'styles.css', 'engine.js', 'app.js', 'questions.json', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png', 'skills.json',
   ...Array.from({ length: 34 }, (_, i) => `skills/q${i + 1}.png`),
   ...Array.from({ length: 39 }, (_, i) => `skills/q${i + 35}.svg`),
-  ...Array.from({ length: 20 }, (_, i) => `skills/q${i + 101}.svg`),
+  ...Array.from({ length: 42 }, (_, i) => `skills/q${i + 101}.svg`),
 ];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(FILES)));
+  // cache: 'reload' παρακάμπτει την προσωρινή μνήμη του browser, ώστε η νέα έκδοση να μην πάρει παλιά αρχεία.
+  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(FILES.map((f) => new Request(f, { cache: 'reload' })))));
 });
 
 self.addEventListener('activate', (event) => {

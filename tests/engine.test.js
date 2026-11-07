@@ -146,8 +146,8 @@ test('αντίγραφο ασφαλείας: δέχεται έγκυρο, απο
 test('οι δεξιότητες έχουν 100 ερωτήσεις εξέτασης και 20 επαγωγικού, με εικόνα ή κείμενο και εξήγηση', () => {
   const { parts, base } = JSON.parse(fs.readFileSync(path.join(__dirname, '../skills.json'), 'utf8'));
   assert.equal(base, 55);
-  assert.deepEqual(parts.map((p) => p.items.length), [34, 39, 27, 20]);
-  const exam = parts.filter((p) => !p.extra).flatMap((p) => p.items);
+  assert.deepEqual(parts.map((p) => p.items.length), [34, 39, 27, 42]);
+  const exam = parts.slice(0, 3).flatMap((p) => p.items);
   assert.deepEqual(exam.map((q) => q.n), Array.from({ length: 100 }, (_, i) => i + 1));
   const items = parts.flatMap((p) => p.items);
   assert.ok(items.every((q) => q.a >= 0 && q.a < q.o.length && q.e && (q.q || q.img)));
@@ -166,4 +166,28 @@ test('ο γύρος δεξιοτήτων συνεχίζει από όπου έμ
   assert.deepEqual(st.cards, {});
   L.resetSkill(st, 'x');
   assert.equal(L.skillQueue(st, part).length, 3);
+});
+
+test('λεκτικός και τριάδες: 30 κείμενα με 4 δηλώσεις και 76 τριάδες χωρίς επανάληψη', () => {
+  const { reading, triads, parts } = JSON.parse(fs.readFileSync(path.join(__dirname, '../skills.json'), 'utf8'));
+  assert.equal(reading.length, 30);
+  assert.ok(reading.every((t) => t.st.length === 4 && t.st.every((x) => x.a >= 0 && x.a <= 2 && x.e) && [1, 2, 3].includes(t.lvl)));
+  assert.equal(triads.length, 76);
+  assert.equal(new Set(triads.flat()).size, 228);
+  assert.ok(parts[3].items.every((q) => [1, 2, 3].includes(q.lvl)));
+});
+
+test('η προσαρμοστική επιλογή ανεβαίνει με σωστές, κατεβαίνει με λάθος και δεν επαναλαμβάνει', () => {
+  assert.equal(L.nextLevel(2, true), 3);
+  assert.equal(L.nextLevel(3, true), 3);
+  assert.equal(L.nextLevel(1, false), 1);
+  const pool = [{ n: 1, lvl: 1 }, { n: 2, lvl: 2 }, { n: 3, lvl: 3 }];
+  const used = new Set([3]);
+  assert.equal(L.pickAdaptive(pool, 3, used).n, 2);
+  assert.equal(L.adaptiveScore([{ lvl: 3, ok: true }, { lvl: 1, ok: false }]), 50);
+  assert.equal(L.knowledgeExam(questions, 25).length, 25);
+  const st = L.newState();
+  L.recordExam(st, 'knowledge', 80, T);
+  assert.equal(L.lastExam(st, 'knowledge').s, 80);
+  assert.equal(L.lastExam(st, 'inductive'), null);
 });
