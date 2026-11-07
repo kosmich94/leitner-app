@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Φτιάχνει το skills.json και τις εικόνες skills/q*.png από τα PDF της Δοκιμασίας Δεξιοτήτων.
+"""Φτιάχνει το skills.json και τις εικόνες του φακέλου skills/ από τα PDF της Δοκιμασίας Δεξιοτήτων.
 
 Χρήση: build_skills.py <φάκελος PDF> <φάκελος εφαρμογής>
 Οι απαντήσεις έρχονται από το PDF των ορθών απαντήσεων. Οι εξηγήσεις γράφτηκαν χειρωνακτικά.
+Τα γλωσσικά κόβονται από το PDF, τα αριθμητικά και ο επαγωγικός σχεδιάζονται στο figures.py.
 """
 import io
 import json
@@ -12,7 +13,9 @@ import unicodedata
 from pathlib import Path
 
 import fitz
-from PIL import Image, ImageChops
+from PIL import Image
+
+from figures import inductive_items, numeric_figure
 
 LETTERS = 'αβγδ'
 UPPER = 'ΑΒΓΔ'
@@ -168,32 +171,20 @@ def read_scenarios(doc):
     return found
 
 
-def trim(img):
-    gray = img.convert('L').point(lambda v: 255 if v < 235 else 0)
-    box = gray.getbbox()
-    pad = 14
-    return img.crop((max(0, box[0] - pad), max(0, box[1] - pad), min(img.width, box[2] + pad), min(img.height, box[3] + pad)))
-
-
-def crop_numeric(doc, out):
+def crop_verbal(doc, out):
     done = set()
-    for page in list(doc)[4:9]:
+    for page in list(doc)[1:4]:
         for table in page.find_tables(strategy='lines').tables:
-            if table.col_count != 2:
+            label = (table.extract()[0][0] or '').strip()
+            if table.row_count != 5 or not re.fullmatch(r'\d{1,2}', label):
                 continue
-            rows = table.extract()
-            for r in range(0, len(rows) - 1, 2):
-                for c in (0, 1):
-                    label = (rows[r][c] or '').strip()
-                    if not re.fullmatch(r'\d\d', label):
-                        continue
-                    x0, y0, x1, y1 = table.rows[r + 1].cells[c]
-                    clip = fitz.Rect(x0 + 2, y0 + 2, x1 - 2, y1 - 2)
-                    pix = page.get_pixmap(matrix=fitz.Matrix(4, 4), clip=clip, alpha=False)
-                    img = trim(Image.open(io.BytesIO(pix.tobytes('png'))).convert('RGB'))
-                    img.quantize(32).save(out / f'q{label}.png', optimize=True)
-                    done.add(int(label))
-    assert done == set(range(35, 74)), sorted(set(range(35, 74)) - done)
+            x0, y0, x1, y1 = table.bbox
+            top = next(c for c in table.rows[1].cells if c)[1]
+            pix = page.get_pixmap(matrix=fitz.Matrix(4, 4), clip=fitz.Rect(x0 - 1.5, top - 1.5, x1 + 1.5, y1 + 1.5), alpha=False)
+            img = Image.open(io.BytesIO(pix.tobytes('png'))).convert('L')
+            img.quantize(16).save(out / f'q{label}.png', optimize=True)
+            done.add(int(label))
+    assert done == set(range(1, 35)), sorted(set(range(1, 35)) - done)
 
 
 def main():
@@ -204,24 +195,30 @@ def main():
     key = read_key(answers)
     doc = fitz.open(test)
     (app / 'skills').mkdir(exist_ok=True)
-    crop_numeric(doc, app / 'skills')
+    crop_verbal(doc, app / 'skills')
+    for n in NUMERIC:
+        (app / 'skills' / f'q{n}.svg').write_text(numeric_figure(n), encoding='utf-8')
+    inductive = []
+    for i, (tag, figure, answer, why) in enumerate(inductive_items(), start=101):
+        (app / 'skills' / f'q{i}.svg').write_text(figure, encoding='utf-8')
+        inductive.append({'n': i, 'img': f'skills/q{i}.svg', 'o': list('ΑΒΓΔΕ'), 'a': answer, 'e': why, 'tag': tag})
 
-    verbal = [{'n': n, 'q': a, 'q2': b, 'o': o, 'a': key[n], 'e': e} for n, (a, b, o, e) in VERBAL.items()]
-    numeric = [{'n': n, 'img': f'skills/q{n}.png', 'o': list(UPPER), 'a': key[n], 'e': e} for n, e in NUMERIC.items()]
+    verbal = [{'n': n, 'img': f'skills/q{n}.png', 'o': list(UPPER), 'a': key[n], 'e': e} for n, (_, _, _, e) in VERBAL.items()]
+    numeric = [{'n': n, 'img': f'skills/q{n}.svg', 'o': list(UPPER), 'a': key[n], 'e': e} for n, e in NUMERIC.items()]
     scenes = read_scenarios(doc)
     scenarios = [{
         'n': n, 'q': norm(scenes[n]['q']), 'o': [norm(scenes[n]['o'][l]) for l in UPPER], 'a': key[n], 'e': SCENARIOS[n],
     } for n in sorted(scenes)]
     data = {
-        'source': 'ΑΣΕΠ, προκήρυξη 2Γ/2022, 4 Μαρτίου 2023',
         'base': 55,
         'parts': [
-            {'id': 'verbal', 'name': 'Γλωσσικός συλλογισμός', 'hint': 'Βρες τη σχέση του πρώτου ζεύγους και συμπλήρωσε το δεύτερο.', 'items': verbal},
+            {'id': 'verbal', 'name': 'Γλωσσικός συλλογισμός', 'hint': 'Βρες τη σχέση του πρώτου ζεύγους και συμπλήρωσε το δεύτερο.', 'fixed': True, 'items': verbal},
             {'id': 'numeric', 'name': 'Αριθμητικός συλλογισμός', 'hint': 'Βρες τον κανόνα που συνδέει τους αριθμούς.', 'fixed': True, 'items': numeric},
             {'id': 'work', 'name': 'Εργασιακή αποτελεσματικότητα', 'hint': 'Διάλεξε την πιο αποτελεσματική και σφαιρική αντιμετώπιση.', 'items': scenarios},
+            {'id': 'inductive', 'name': 'Επαγωγικός συλλογισμός', 'hint': 'Βρες το μοτίβο στα σχήματα και διάλεξε αυτό που λείπει.', 'fixed': True, 'extra': True, 'items': inductive},
         ],
     }
-    assert sum(len(p['items']) for p in data['parts']) == 100
+    assert sum(len(p['items']) for p in data['parts'][:3]) == 100
     (app / 'skills.json').write_text(json.dumps(data, ensure_ascii=False, separators=(',', ':')), encoding='utf-8')
 
 

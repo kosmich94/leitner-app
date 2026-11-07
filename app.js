@@ -287,7 +287,7 @@
       return;
     }
     const stats = skillData.parts.map((part) => ({ part, ...L.skillProgress(state, part) }));
-    const sum = (key) => stats.reduce((n, x) => n + x[key], 0);
+    const sum = (key) => stats.filter((x) => !x.part.extra).reduce((n, x) => n + x[key], 0);
     const total = sum('total');
     const rows = stats.map(({ part, answered, correct, total: size }) => `
       <button class="subject" data-skill="${part.id}">
@@ -296,14 +296,14 @@
         <span class="bar"><i style="width:${answered / size * 100}%"></i></span>
         <span class="hint">${esc(part.hint)}${answered ? ` Σωστές: ${num(correct)}.` : ''}</span>
       </button>`).join('');
-    const verdict = sum('answered') < total ? `Ολοκλήρωσε και τα τρία μέρη για να δεις αν περνάς τη βάση των ${skillData.base}.`
+    const verdict = sum('answered') < total ? `Ολοκλήρωσε γλωσσικό, αριθμητικό και εργασιακή αποτελεσματικότητα για να δεις αν περνάς τη βάση των ${skillData.base}.`
       : sum('correct') >= skillData.base ? `Πέρασες τη βάση των ${skillData.base}.` : `Είσαι κάτω από τη βάση των ${skillData.base}.`;
     app.innerHTML = `<main class="screen">
-      <header><h1>Δεξιότητες</h1><p class="sub">${esc(skillData.source)}</p></header>
+      <header><h1>Δεξιότητες</h1></header>
       <section class="card hero">${ring(Math.round(sum('correct') / total * 100))}<div><h2>${num(sum('correct'))} / ${num(total)} σωστές</h2>
         <p class="sub">${esc(verdict)}</p></div></section>
       <section class="card"><h2>Δοκιμασίες</h2><div class="subjects">${rows}</div></section>
-      <p class="sub note">Οι εξηγήσεις δεν προέρχονται από το ΑΣΕΠ. Οι αριθμητικές ελέγχθηκαν με τις επίσημες λύσεις, ενώ στις γλωσσικές και στα σενάρια είναι ερμηνεία της σωστής απάντησης.</p>
+      <p class="sub note">Οι εξηγήσεις στα γλωσσικά και στα σενάρια δεν είναι επίσημες. Ο επαγωγικός έχει 2 επίσημα παραδείγματα και ασκήσεις εξάσκησης, και δεν μετρά στο σκορ.</p>
     </main>${tabs()}`;
   }
 
@@ -365,12 +365,11 @@
         <span class="count">${num(stats.answered)} / ${num(stats.total)}</span>
       </div>
       <div class="study-body ${answered ? '' : 'enter'}">
-        <div class="tag"><b>${esc(part.name)}</b><span>Ερώτηση ${q.n}</span></div>
-        ${q.img ? `<img class="puzzle" src="${esc(q.img)}" alt="Αριθμητική ερώτηση ${q.n}">` : ''}
-        ${q.q ? `<p class="stem ${q.q2 ? '' : 'long'}">${esc(q.q)}</p>` : ''}
-        ${q.q2 ? `<p class="stem">${esc(q.q2)}</p>` : ''}
+        <div class="tag"><b>${esc(part.name)}</b><span>${esc(q.tag || `Ερώτηση ${q.n}`)}</span></div>
+        ${q.img ? `<img class="puzzle" src="${esc(q.img)}" alt="${esc(part.name)}, ερώτηση ${q.n}">` : ''}
+        ${q.q ? `<p class="stem long">${esc(q.q)}</p>` : ''}
         <div class="options ${part.fixed ? 'letters' : ''}">${buttons}</div>
-        ${answered ? `<div class="explain"><b>${part.fixed ? 'Κανόνας' : 'Εξήγηση (όχι επίσημη)'}</b><p>${esc(q.e)}</p></div>` : ''}
+        ${answered ? `<div class="explain"><b>${part.id === 'numeric' ? 'Κανόνας' : part.id === 'inductive' ? 'Μοτίβο' : 'Εξήγηση (όχι επίσημη)'}</b><p>${esc(q.e)}</p></div>` : ''}
       </div>
       ${answered ? `<div class="feedback" aria-live="polite">
         <p class="verdict ${right ? 'good' : 'bad'}">${right ? 'Σωστά' : `Λάθος <small>· Σωστή η ${esc(rightLabel)}</small>`}</p>

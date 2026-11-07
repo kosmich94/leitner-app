@@ -143,14 +143,17 @@ test('αντίγραφο ασφαλείας: δέχεται έγκυρο, απο
   assert.throws(() => L.validateBackup({ app: 'leitner', state: { ...st, cards: { x: { b: 9, d: 1 } } } }));
 });
 
-test('οι δεξιότητες έχουν 100 ερωτήσεις με 4 επιλογές, μία σωστή και εξήγηση', () => {
+test('οι δεξιότητες έχουν 100 ερωτήσεις εξέτασης και 20 επαγωγικού, με εικόνα ή κείμενο και εξήγηση', () => {
   const { parts, base } = JSON.parse(fs.readFileSync(path.join(__dirname, '../skills.json'), 'utf8'));
   assert.equal(base, 55);
-  assert.deepEqual(parts.map((p) => p.items.length), [34, 39, 27]);
+  assert.deepEqual(parts.map((p) => p.items.length), [34, 39, 27, 20]);
+  const exam = parts.filter((p) => !p.extra).flatMap((p) => p.items);
+  assert.deepEqual(exam.map((q) => q.n), Array.from({ length: 100 }, (_, i) => i + 1));
   const items = parts.flatMap((p) => p.items);
-  assert.deepEqual(items.map((q) => q.n), Array.from({ length: 100 }, (_, i) => i + 1));
-  assert.ok(items.every((q) => q.o.length === 4 && q.a >= 0 && q.a <= 3 && q.e && (q.q || q.img)));
-  assert.ok(parts[1].items.every((q) => fs.existsSync(path.join(__dirname, '..', q.img))));
+  assert.ok(items.every((q) => q.a >= 0 && q.a < q.o.length && q.e && (q.q || q.img)));
+  assert.ok(exam.every((q) => q.o.length === 4));
+  assert.ok(parts[3].items.every((q) => q.o.length === 5));
+  assert.ok(items.filter((q) => q.img).every((q) => fs.existsSync(path.join(__dirname, '..', q.img))));
 });
 
 test('ο γύρος δεξιοτήτων συνεχίζει από όπου έμεινε και δεν επηρεάζει τα κουτιά', () => {
