@@ -143,17 +143,13 @@ test('αντίγραφο ασφαλείας: δέχεται έγκυρο, απο
   assert.throws(() => L.validateBackup({ app: 'leitner', state: { ...st, cards: { x: { b: 9, d: 1 } } } }));
 });
 
-test('οι δεξιότητες έχουν 100 ερωτήσεις εξέτασης και 20 επαγωγικού, με εικόνα ή κείμενο και εξήγηση', () => {
-  const { parts, base } = JSON.parse(fs.readFileSync(path.join(__dirname, '../skills.json'), 'utf8'));
-  assert.equal(base, 55);
-  assert.deepEqual(parts.map((p) => p.items.length), [34, 39, 27, 42]);
-  const exam = parts.slice(0, 3).flatMap((p) => p.items);
-  assert.deepEqual(exam.map((q) => q.n), Array.from({ length: 100 }, (_, i) => i + 1));
+test('οι δεξιότητες έχουν 27 σενάρια και 42 επαγωγικά, με εικόνα ή κείμενο και εξήγηση', () => {
+  const { parts } = JSON.parse(fs.readFileSync(path.join(__dirname, '../skills.json'), 'utf8'));
+  assert.deepEqual(parts.map((p) => [p.id, p.items.length]), [['work', 27], ['inductive', 42]]);
   const items = parts.flatMap((p) => p.items);
   assert.ok(items.every((q) => q.a >= 0 && q.a < q.o.length && q.e && (q.q || q.img)));
-  assert.ok(exam.every((q) => q.o.length === 4));
-  assert.ok(parts[3].items.every((q) => q.o.length === 5));
-  assert.ok(items.filter((q) => q.img).every((q) => fs.existsSync(path.join(__dirname, '..', q.img))));
+  assert.ok(parts[0].items.every((q) => q.o.length === 4));
+  assert.ok(parts[1].items.every((q) => q.o.length === 5 && fs.existsSync(path.join(__dirname, '..', q.img))));
 });
 
 test('ο γύρος δεξιοτήτων συνεχίζει από όπου έμεινε και δεν επηρεάζει τα κουτιά', () => {
@@ -168,13 +164,13 @@ test('ο γύρος δεξιοτήτων συνεχίζει από όπου έμ
   assert.equal(L.skillQueue(st, part).length, 3);
 });
 
-test('λεκτικός και τριάδες: 30 κείμενα με 4 δηλώσεις και 76 τριάδες χωρίς επανάληψη', () => {
+test('λεκτικός και τριάδες: 60 κείμενα με 4 δηλώσεις και 76 τριάδες χωρίς επανάληψη', () => {
   const { reading, triads, parts } = JSON.parse(fs.readFileSync(path.join(__dirname, '../skills.json'), 'utf8'));
-  assert.equal(reading.length, 30);
+  assert.equal(reading.length, 60);
   assert.ok(reading.every((t) => t.st.length === 4 && t.st.every((x) => x.a >= 0 && x.a <= 2 && x.e) && [1, 2, 3].includes(t.lvl)));
   assert.equal(triads.length, 76);
   assert.equal(new Set(triads.flat()).size, 228);
-  assert.ok(parts[3].items.every((q) => [1, 2, 3].includes(q.lvl)));
+  assert.ok(parts[1].items.every((q) => [1, 2, 3].includes(q.lvl)));
 });
 
 test('η προσαρμοστική επιλογή ανεβαίνει με σωστές, κατεβαίνει με λάθος και δεν επαναλαμβάνει', () => {
@@ -190,4 +186,14 @@ test('η προσαρμοστική επιλογή ανεβαίνει με σω�
   L.recordExam(st, 'knowledge', 80, T);
   assert.equal(L.lastExam(st, 'knowledge').s, 80);
   assert.equal(L.lastExam(st, 'inductive'), null);
+});
+
+test('τα λάθη των δεξιοτήτων ξαναβγαίνουν σε 2 ημέρες και φεύγουν με σωστή απάντηση', () => {
+  const st = L.newState();
+  L.markRetry(st, 'inductive', 120, false, T);
+  assert.deepEqual(L.retryDue(st, 'inductive', T + 1), []);
+  assert.deepEqual(L.retryDue(st, 'inductive', T + 2), [120]);
+  assert.deepEqual(L.retryDue(st, 'reading', T + 2), []);
+  L.markRetry(st, 'inductive', 120, true, T + 2);
+  assert.deepEqual(L.retryDue(st, 'inductive', T + 5), []);
 });

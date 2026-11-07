@@ -28,6 +28,7 @@
     settings: { newPerDay: 50, examDate: null, theme: 'auto' },
     skills: {},
     exams: [],
+    retry: {},
     lastBackup: null,
   });
 
@@ -291,6 +292,21 @@
     state.exams = [...(state.exams || []), { k: kind, d: today, s: score }].slice(-60);
   }
 
+  /* Επανάληψη λαθών στις δεξιότητες: ό,τι απαντήθηκε λάθος ξαναβγαίνει σε 2 ημέρες, μέχρι να απαντηθεί σωστά. */
+  const RETRY_DAYS = 2;
+
+  function markRetry(state, kind, n, isCorrect, today) {
+    const key = `${kind}:${n}`;
+    const retry = { ...(state.retry || {}) };
+    if (isCorrect) delete retry[key];
+    else retry[key] = today + RETRY_DAYS;
+    state.retry = retry;
+  }
+
+  const retryDue = (state, kind, today) => Object.entries(state.retry || {})
+    .filter(([key, day]) => key.startsWith(`${kind}:`) && day <= today)
+    .map(([key]) => Number(key.split(':')[1]));
+
   const lastExam = (state, kind) => (state.exams || []).filter((e) => e.k === kind).pop() || null;
 
   function validateBackup(data) {
@@ -309,6 +325,7 @@
     INTERVALS, MAX_BOX, FINAL_STRETCH_DAYS, dayNum, parseDay, newState, daysLeft, intervalFor, newLimit,
     peekDay, arrangeOptions, dueCards, pickNew, todayPlan, createSession, current, remaining, answer,
     undoAnswer, boxCounts, readiness, subjectStats, forecast, streak, skillProgress, skillQueue, recordSkill,
-    resetSkill, nextLevel, pickAdaptive, adaptiveScore, knowledgeExam, recordExam, lastExam, shuffled, validateBackup,
+    resetSkill, nextLevel, pickAdaptive, adaptiveScore, knowledgeExam, recordExam, lastExam, markRetry, retryDue, shuffled,
+    validateBackup,
   };
 });

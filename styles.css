@@ -64,7 +64,7 @@ h2 { font-size: 15px; font-weight: 600; color: var(--muted); }
 .bar i { display: block; height: 100%; background: var(--accent); border-radius: 3px; transition: width .3s ease; }
 
 .tabs {
-  position: fixed; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: repeat(4, 1fr);
+  position: fixed; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: repeat(5, 1fr);
   background: var(--glass); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px);
   border-top: .5px solid var(--line); padding-bottom: var(--safe-bottom); z-index: 5;
 }
@@ -172,6 +172,10 @@ th { background: var(--raised); font-weight: 600; }
 .review .bad { color: var(--bad); }
 .review .good { color: var(--good); }
 .btn:disabled { opacity: .45; }
+.subject .hint .due { font-style: normal; color: var(--bad); font-weight: 600; }
+.tips summary { font-weight: 600; cursor: pointer; list-style-position: outside; }
+.tips[open] summary { margin-bottom: 4px; }
+.chart-title { font-size: 14px; font-weight: 600; color: var(--muted); margin-top: 6px; }
 .feedback {
   position: sticky; bottom: 0; background: var(--glass); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px);
   border-top: .5px solid var(--line); padding: 12px 16px calc(var(--safe-bottom) + 12px); display: grid; gap: 8px;

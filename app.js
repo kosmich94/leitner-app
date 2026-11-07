@@ -16,6 +16,7 @@
   const ICONS = {
     skills: icon('<path d="M9.5 18h5M10.5 21h3M12 3a6 6 0 0 0-3.8 10.6c.6.5.9 1.2.9 1.9h5.8c0-.7.3-1.4.9-1.9A6 6 0 0 0 12 3z"/>'),
     home: icon('<rect x="4" y="5" width="16" height="16" rx="3"/><path d="M4 10h16M8 3v4M16 3v4M9 15.5l2 2 4-4"/>'),
+    sim: icon('<circle cx="12" cy="13.5" r="7.5"/><path d="M12 13.5V9.5M10 3h4M18.5 6.5l1.5-1.5"/>'),
     progress: icon('<path d="M5 20v-6M12 20V5M19 20v-9"/>'),
     settings: icon('<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>'),
     close: icon('<path d="M6 6l12 12M18 6L6 18"/>'),
@@ -37,6 +38,7 @@
   let run = null;
   let reader = null;
   let clock = null;
+  let exam = null;
 
   const today = () => L.dayNum();
   const num = (n) => n.toLocaleString('el-GR');
@@ -51,6 +53,9 @@
     try {
       const raw = localStorage.getItem(STORE_KEY);
       if (raw) state = { ...L.newState(), ...JSON.parse(raw) };
+      // Το υλικό του τεστ 2022 (αναλογίες, αριθμητικός) αφαιρέθηκε.
+      delete state.skills.verbal;
+      delete state.skills.numeric;
     } catch (err) {
       toast('Η αποθηκευμένη πρόοδος δεν διαβάστηκε. Κάνε επαναφορά από αντίγραφο ασφαλείας.');
     }
@@ -96,7 +101,7 @@
 
   function tabs() {
     const item = (id, label) => `<button data-go="${id}" ${view === id ? 'aria-current="page"' : ''}>${ICONS[id]}${label}</button>`;
-    return `<nav class="tabs">${item('home', 'Σήμερα')}${item('skills', 'Δεξιότητες')}${item('progress', 'Πρόοδος')}${item('settings', 'Ρυθμίσεις')}</nav>`;
+    return `<nav class="tabs">${item('home', 'Γνώσεις')}${item('skills', 'Δεξιότητες')}${item('sim', 'Προσομοίωση')}${item('progress', 'Πρόοδος')}${item('settings', 'Ρυθμίσεις')}</nav>`;
   }
 
   function boxOverview() {
@@ -161,9 +166,8 @@
   function renderHome() {
     const when = new Date().toLocaleDateString('el-GR', { weekday: 'long', day: 'numeric', month: 'long' });
     app.innerHTML = `<main class="screen">
-      <header><p class="sub">${esc(when)}</p><h1>Σήμερα</h1>${examLine()}</header>
+      <header><p class="sub">${esc(when)}</p><h1>Γνώσεις</h1>${examLine()}</header>
       ${installBanner()}${backupBanner()}${planCard()}
-      <button class="card guide-link" data-run="knowledge"><span><b>Δοκιμαστικό γνώσεων</b><span class="sub">25 τυχαίες ερωτήσεις σε 25′, όπως στην εξέταση</span></span><span class="chev">›</span></button>
       ${boxOverview()}${subjectList()}
     </main>${tabs()}`;
   }
@@ -290,18 +294,41 @@
 
   const RUNS = {
     knowledge: { name: 'Γνώσεις', meta: '25 ερωτήσεις', minutes: 25, count: 25 },
+    reading: { name: 'Λεκτικός συλλογισμός', meta: '5 κείμενα, 20 δηλώσεις, η δυσκολία προσαρμόζεται', minutes: 35, count: 5 },
     inductive: { name: 'Επαγωγικός συλλογισμός', meta: '18 ερωτήσεις, η δυσκολία προσαρμόζεται', minutes: 24, count: 18 },
-    reading: { name: 'Λεκτικός συλλογισμός', meta: '5 κείμενα, 20 δηλώσεις', minutes: 35, count: 5 },
     triads: { name: 'Εργασιακές συμπεριφορές', meta: '76 τριάδες', minutes: 30, count: 76 },
   };
   const VERDICTS = ['Σωστό', 'Λάθος', 'Δεν μπορεί να απαντηθεί'];
   const SHORT = ['Σ', 'Λ', 'Δ'];
 
-  function readingProgress() {
-    const done = state.skills.reading || {};
-    const keys = Object.keys(done);
-    return { answered: keys.length, correct: keys.reduce((n, k) => n + done[k], 0), total: skillData.reading.length };
+  const FULL = ['knowledge', 'reading', 'inductive', 'triads'];
+  const KIND_NAMES = { full: 'Πλήρης προσομοίωση', knowledge: 'Γνώσεις', reading: 'Λεκτικός', inductive: 'Επαγωγικός', triads: 'Τριάδες' };
+
+  function retryNote(kind) {
+    const due = L.retryDue(state, kind, today()).length;
+    return due ? ` <em class="due">${num(due)} για επανάληψη</em>` : '';
   }
+
+  const STRATEGY = [
+    ['Λεκτικός: πώς τα λύνεις', [
+      'Κρίνε κάθε δήλωση μόνο με βάση το κείμενο, όχι με όσα ξέρεις.',
+      '«Σωστό»: το κείμενο το λέει ή προκύπτει άμεσα, π.χ. 45 από τους 60 είναι τα τρία τέταρτα.',
+      '«Λάθος»: το κείμενο λέει το αντίθετο.',
+      '«Δεν μπορεί να απαντηθεί»: το κείμενο δεν το λέει, ακόμη κι αν ακούγεται λογικό.',
+      'Πρόσεξε τις λέξεις-παγίδες: «όλοι», «πάντα», «αποκλειστικά», «έχει ήδη», «σχεδιάζει», «πιθανό», «βέβαιο».',
+      'Συσχέτιση δεν σημαίνει αιτία. Αν το κείμενο λέει «μπορεί να εξηγεί», η αιτία δεν είναι βέβαιη.']],
+    ['Επαγωγικός: πώς τα λύνεις', [
+      'Έλεγξε με τη σειρά: θέση και κίνηση, περιστροφή, πλήθος, χρώμα ή γέμισμα, μέγεθος, εναλλαγή.',
+      'Συχνά ισχύουν 2 ή 3 κανόνες μαζί. Βρες έναν και κράτα μόνο τις επιλογές που τον τηρούν.',
+      'Σε πίνακες 3×3 κοίτα και τις γραμμές και τις στήλες.',
+      'Αν κολλήσεις, απόκλεισε ό,τι σίγουρα δεν ταιριάζει και προχώρα. Δεν υπάρχει επιστροφή.']],
+    ['Σενάρια: πώς τα λύνεις', [
+      'Κερδίζει η πιο σφαιρική λύση, όχι η πιο γρήγορη ή η πιο αυστηρή.',
+      'Πρώτα ενημέρωση ή συζήτηση, συχνά κατ’ ιδίαν, και μετά μέτρα.',
+      'Τηρούνται η νομιμότητα και η ιεραρχία. Αποφεύγονται οι αυθαίρετες ή ακραίες ενέργειες.',
+      'Ο πολίτης εξυπηρετείται χωρίς να αδικούνται οι άλλοι, π.χ. εμβόλιμα όταν υπάρχει χρόνος.',
+      'Ο προϊστάμενος στηρίζει και οργανώνει την ομάδα. Δεν κάνει μόνος του όλη τη δουλειά.']],
+  ];
 
   function partRow(part) {
     const { answered, correct, total } = L.skillProgress(state, part);
@@ -309,14 +336,45 @@
         <span class="name">${esc(part.name)}</span>
         <span class="meta">${num(answered)} / ${num(total)}<span class="chev">›</span></span>
         <span class="bar"><i style="width:${answered / total * 100}%"></i></span>
-        <span class="hint">${esc(part.hint)}${answered ? ` Σωστές: ${num(correct)}.` : ''}</span>
+        <span class="hint">${esc(part.hint)}${answered ? ` Σωστές: ${num(correct)}.` : ''}${retryNote(part.id)}</span>
       </button>`;
   }
 
+  function readingProgress() {
+    const done = state.skills.reading || {};
+    const keys = Object.keys(done);
+    return { answered: keys.length, correct: keys.reduce((n, k) => n + done[k], 0), total: skillData.reading.length };
+  }
+
+  const missing = (title) => `<main class="screen"><header><h1>${title}</h1></header>
+    <p class="sub">Οι ασκήσεις δεν φορτώθηκαν. Άνοιξε την εφαρμογή μία φορά με internet.</p></main>${tabs()}`;
+
   function renderSkills() {
     if (!skillData) {
-      app.innerHTML = `<main class="screen"><header><h1>Δεξιότητες</h1></header>
-        <p class="sub">Οι ερωτήσεις δεν φορτώθηκαν. Άνοιξε την εφαρμογή μία φορά με internet.</p></main>${tabs()}`;
+      app.innerHTML = missing('Δεξιότητες');
+      return;
+    }
+    const rp = readingProgress();
+    app.innerHTML = `<main class="screen">
+      <header><h1>Δεξιότητες</h1><p class="sub">Εξάσκηση χωρίς χρόνο, με εξήγηση σε κάθε απάντηση</p></header>
+      <section class="card"><div class="subjects">
+        <button class="subject" data-do="reading-start">
+          <span class="name">Λεκτικός συλλογισμός <em class="new">νέο</em></span>
+          <span class="meta">${num(rp.answered)} / ${num(rp.total)}<span class="chev">›</span></span>
+          <span class="bar"><i style="width:${rp.answered / rp.total * 100}%"></i></span>
+          <span class="hint">Κείμενο και 4 δηλώσεις: Σωστό, Λάθος ή Δεν μπορεί να απαντηθεί.${rp.answered ? ` Σωστές δηλώσεις: ${num(rp.correct)} από ${num(rp.answered * 4)}.` : ''}${retryNote('reading')}</span>
+        </button>
+        ${partRow(skillPart('inductive'))}${partRow(skillPart('work'))}</div></section>
+      ${STRATEGY.map(([title, tips]) => `<details class="card tips"><summary>${esc(title)}</summary><ul class="facts">${tips.map((t) => `<li>${esc(t)}</li>`).join('')}</ul></details>`).join('')}
+      <p class="sub note">Τα λάθη ξαναβγαίνουν μετά από 2 ημέρες, μέχρι να τα απαντήσεις σωστά. Τα κείμενα λεκτικού, οι ασκήσεις επαγωγικού (εκτός από 2 επίσημα παραδείγματα) και όλες οι εξηγήσεις είναι δικό μας υλικό, όχι του ΑΣΕΠ.</p>
+    </main>${tabs()}`;
+  }
+
+  /* ---------- Προσομοίωση ---------- */
+
+  function renderSim() {
+    if (!skillData) {
+      app.innerHTML = missing('Προσομοίωση');
       return;
     }
     const runs = Object.entries(RUNS).map(([kind, r]) => {
@@ -324,30 +382,47 @@
       const result = !last ? '' : kind === 'triads' ? ` Τελευταία φορά: ${last.s === 100 ? 'ολοκληρώθηκε' : 'δεν ολοκληρώθηκε'}.` : ` Τελευταίος βαθμός: ${last.s}/100.`;
       return `<button class="subject" data-run="${kind}">
         <span class="name">${esc(r.name)}</span><span class="meta">${r.minutes}′<span class="chev">›</span></span>
-        <span class="hint">${esc(r.meta)}. ${kind === 'triads' ? 'Χωρίς βαθμό, για εξοικείωση με τον ρυθμό.' : 'Χωρίς επιστροφή, όπως στην εξέταση.'}${result}</span></button>`;
+        <span class="hint">${esc(r.meta)}.${result}</span></button>`;
     }).join('');
-    const rp = readingProgress();
-    const legacy = skillData.parts.filter((p) => p.legacy);
-    const exam = skillData.parts.filter((p) => ['verbal', 'numeric', 'work'].includes(p.id)).map((p) => L.skillProgress(state, p));
-    const examCorrect = exam.reduce((n, x) => n + x.correct, 0);
-    const examDone = exam.every((x) => x.answered === x.total);
+    const total = FULL.reduce((n, k) => n + RUNS[k].minutes, 0);
+    const lastFull = L.lastExam(state, 'full');
+    const history = (state.exams || []).slice(-8).reverse().map((e) => `<tr><td>${dateOf(e.d).toLocaleDateString('el-GR', { day: 'numeric', month: 'numeric', timeZone: 'UTC' })}</td>
+      <td>${esc(KIND_NAMES[e.k] || e.k)}</td><td>${e.k === 'triads' ? (e.s === 100 ? 'ολοκληρώθηκε' : 'μηδέν') : `${e.s}/100`}</td></tr>`).join('');
     app.innerHTML = `<main class="screen">
-      <header><h1>Δεξιότητες</h1><p class="sub">Προετοιμασία για τον 3ο πανελλήνιο γραπτό διαγωνισμό</p></header>
+      <header><h1>Προσομοίωση</h1><p class="sub">Συνθήκες εξέτασης: με χρόνο και χωρίς επιστροφή</p></header>
       <button class="card guide-link" data-go="guide"><span><b>Τι ξέρουμε για την εξέταση</b><span class="sub">Μορφή, χρόνοι, τι είναι επίσημο και τι πιθανό</span></span><span class="chev">›</span></button>
-      <section class="card"><h2>Προσομοιώσεις με χρόνο</h2><div class="subjects">${runs}</div></section>
-      <section class="card"><h2>Εξάσκηση με εξηγήσεις</h2><div class="subjects">
-        <button class="subject" data-do="reading-start">
-          <span class="name">Λεκτικός συλλογισμός <em class="new">νέο</em></span>
-          <span class="meta">${num(rp.answered)} / ${num(rp.total)}<span class="chev">›</span></span>
-          <span class="bar"><i style="width:${rp.answered / rp.total * 100}%"></i></span>
-          <span class="hint">Κείμενο και 4 δηλώσεις: Σωστό, Λάθος ή Δεν μπορεί να απαντηθεί.${rp.answered ? ` Σωστές δηλώσεις: ${num(rp.correct)} από ${num(rp.answered * 4)}.` : ''}</span>
-        </button>
-        ${partRow(skillPart('inductive'))}${partRow(skillPart('work'))}</div></section>
-      <section class="card"><h2>Δευτερεύουσα εξάσκηση · τεστ 2022</h2>
-        <p class="sub">Δεν έχουν ανακοινωθεί για τον 3ο διαγωνισμό. Τεστ 2022 μαζί με τα σενάρια: ${num(examCorrect)} / 100${examDone ? ` · ${examCorrect >= skillData.base ? 'πάνω' : 'κάτω'} από τη βάση των ${skillData.base}` : ''}.</p>
-        <div class="subjects">${legacy.map(partRow).join('')}</div></section>
-      <p class="sub note">Τα κείμενα λεκτικού, οι τριάδες, οι ασκήσεις επαγωγικού (εκτός από 2 επίσημα παραδείγματα) και όλες οι εξηγήσεις είναι δικό μας υλικό, όχι του ΑΣΕΠ.</p>
+      <section class="card"><h2>Πλήρης εξέταση</h2>
+        <p class="sub">${FULL.map((k) => `${KIND_NAMES[k]} ${RUNS[k].minutes}′`).join(' → ')}. Συνολικά ${Math.floor(total / 60)} ώρα και ${total % 60} λεπτά, όπως ήταν το 2025 μαζί με τον νέο λεκτικό.${lastFull ? ` Τελευταίος μέσος βαθμός: ${lastFull.s}/100.` : ''}</p>
+        <button class="btn primary" data-do="exam-start">Ξεκίνα την πλήρη εξέταση</button></section>
+      <section class="card"><h2>Μία δοκιμασία</h2><div class="subjects">${runs}</div></section>
+      ${history ? `<section class="card"><h2>Πρόσφατα αποτελέσματα</h2><table>${history}</table></section>` : ''}
     </main>${tabs()}`;
+  }
+
+  function renderExamBreak() {
+    const done = exam.parts[exam.parts.length - 1];
+    const next = RUNS[FULL[exam.idx]];
+    app.innerHTML = `<main class="screen">
+      <header><h1>Πλήρης εξέταση</h1><p class="sub">Δοκιμασία ${exam.idx + 1} από ${FULL.length}</p></header>
+      <section class="card"><h2>Τέλος: ${esc(done.name)}</h2><p class="sub">${done.kind === 'triads' ? '' : `Βαθμός ${done.score}/100.`}</p></section>
+      <section class="card"><h2>Επόμενη: ${esc(next.name)}</h2><p class="sub">${esc(next.meta)}, ${next.minutes} λεπτά. Στην εξέταση δεν υπάρχει διάλειμμα, οπότε συνέχισε αμέσως.</p>
+        <button class="btn primary" data-do="exam-next">Συνέχεια</button></section>
+      <button class="btn danger" data-do="exam-abort">Διακοπή της εξέτασης</button>
+    </main>`;
+  }
+
+  function renderExamDone() {
+    const scored = exam.parts.filter((p) => p.kind !== 'triads');
+    const avg = Math.round(scored.reduce((n, p) => n + p.score, 0) / scored.length);
+    const rows = exam.parts.map((p) => `<tr><td>${esc(p.name)}</td><td>${p.kind === 'triads'
+      ? (p.done === p.count ? 'ολοκληρώθηκε' : `${p.done}/${p.count} · θα ήταν μηδέν`) : `${p.score}/100`}</td></tr>`).join('');
+    app.innerHTML = `<main class="screen">
+      <header><h1>Πλήρης εξέταση</h1><p class="sub">Ολοκληρώθηκε</p></header>
+      <section class="card hero">${ring(avg)}<div><h2>Μέσος βαθμός ${avg}/100</h2>
+        <p class="sub">Μέσος όρος γνώσεων, λεκτικού και επαγωγικού. Τα επίσημα βάρη του 3ου διαγωνισμού δεν έχουν ανακοινωθεί.</p></div></section>
+      <section class="card"><table>${rows}</table></section>
+      <button class="btn primary" data-go="sim">Τέλος</button>
+    </main>`;
   }
 
   /* ---------- Οδηγός εξέτασης ---------- */
@@ -355,7 +430,7 @@
   function renderGuide() {
     const row = (a, b, c) => `<tr><td>${a}</td><td>${b}</td><td>${c}</td></tr>`;
     app.innerHTML = `<main class="screen guide">
-      <header><button class="linkbtn back" data-go="skills">‹ Δεξιότητες</button><h1>Η εξέταση</h1>
+      <header><button class="linkbtn back" data-go="sim">‹ Προσομοίωση</button><h1>Η εξέταση</h1>
         <p class="sub">Ό,τι είναι γνωστό στις 7 Νοεμβρίου 2026. Δεν έχει βγει ακόμη η προκήρυξη.</p></header>
       <section class="card"><h2>Επίσημα</h2><ul class="facts">
         <li>Ο 3ος πανελλήνιος γραπτός διαγωνισμός αναμένεται το 2027, χωρίς ανακοινωμένη ημερομηνία.</li>
@@ -371,7 +446,7 @@
         <li>Λεκτικός: σύντομο κείμενο και 4 δηλώσεις για Σωστό, Λάθος ή Δεν μπορεί να απαντηθεί, μόνο με βάση το κείμενο (από δημοσιεύματα για τη σύμβαση).</li>
         <li>Σενάρια εργασιακής αποτελεσματικότητας μαζί με τον λεκτικό (από δημοσιεύματα για τη σύμβαση).</li>
         <li>Επαγωγικός και τριάδες όπως το 2025. Τα ποσοστά μπορεί να αλλάξουν με τον νέο λεκτικό.</li>
-        <li>Αριθμητικός και αναλογίες λέξεων: υπήρχαν μόνο το 2022 και δεν έχουν ανακοινωθεί.</li></ul></section>
+        <li>Αριθμητικός και αναλογίες λέξεων υπήρχαν μόνο το 2022 και δεν έχουν ανακοινωθεί, γι’ αυτό δεν είναι στην εφαρμογή.</li></ul></section>
       <section class="card"><h2>Συμβουλές</h2><ul class="facts">
         <li>Γνώσεις: περίπου 1 λεπτό ανά ερώτηση. Διάβασε όλες τις επιλογές πριν πατήσεις.</li>
         <li>Επαγωγικός: περίπου 80″ ανά ερώτηση. Ψάξε πρώτα κίνηση, πλήθος, χρώμα και περιστροφή.</li>
@@ -389,7 +464,9 @@
 
   function startReading() {
     const done = state.skills.reading || {};
-    const queue = L.shuffled(skillData.reading.filter((t) => !(t.n in done)));
+    const due = new Set(L.retryDue(state, 'reading', today()));
+    const queue = [...L.shuffled(skillData.reading.filter((t) => due.has(t.n))),
+      ...L.shuffled(skillData.reading.filter((t) => !(t.n in done) && !due.has(t.n)))];
     if (!queue.length) {
       if (!confirm('Έχεις κάνει όλα τα κείμενα. Ξεκινάς νέο γύρο; Το σκορ του λεκτικού θα μηδενιστεί.')) return;
       L.resetSkill(state, 'reading');
@@ -397,7 +474,7 @@
       startReading();
       return;
     }
-    reader = { queue, pos: 0, picks: [null, null, null, null], checked: false };
+    reader = { queue, due, pos: 0, picks: [null, null, null, null], checked: false };
     view = 'reading';
     render();
     window.scrollTo(0, 0);
@@ -428,7 +505,7 @@
         <span class="count">${num(rp.answered)} / ${num(rp.total)}</span>
       </div>
       <div class="study-body ${reader.checked ? '' : 'enter'}">
-        <div class="tag"><b>Λεκτικός συλλογισμός</b><span>Επίπεδο ${text.lvl} από 3</span></div>
+        <div class="tag"><b>Λεκτικός συλλογισμός</b><span>${reader.due.has(text.n) ? 'Επανάληψη λάθους · ' : ''}Επίπεδο ${text.lvl} από 3</span></div>
         <p class="passage">${esc(text.text)}</p>
         <p class="sub">Σ = Σωστό · Λ = Λάθος · Δ = Δεν μπορεί να απαντηθεί</p>
         ${statementList(text, reader.picks, reader.checked, 'rpick')}
@@ -489,6 +566,8 @@
     run.choice = null;
     if (run.pos >= run.count) return finishRun(false);
     if (run.kind === 'knowledge') run.options = L.arrangeOptions(run.items[run.pos]);
+    if (run.kind === 'inductive') L.markRetry(state, 'inductive', record.q.n, record.ok, today());
+    if (run.kind === 'reading') L.markRetry(state, 'reading', record.q.n, record.right === 4, today());
     if (run.kind === 'inductive' || run.kind === 'reading') {
       run.level = L.nextLevel(run.level, record.ok);
       nextAdaptive();
@@ -531,6 +610,19 @@
     }
     if (run.kind === 'triads') run.score = res.length === run.count ? 100 : 0;
     L.recordExam(state, run.kind, run.score, today());
+    if (exam) {
+      exam.parts.push({ kind: run.kind, name: run.name, score: run.score, done: res.length, count: run.count });
+      exam.idx++;
+      if (exam.idx >= FULL.length) {
+        const scored = exam.parts.filter((p) => p.kind !== 'triads');
+        L.recordExam(state, 'full', Math.round(scored.reduce((n, p) => n + p.score, 0) / scored.length), today());
+      }
+      save();
+      view = exam.idx >= FULL.length ? 'examDone' : 'examBreak';
+      render();
+      window.scrollTo(0, 0);
+      return;
+    }
     save();
     view = 'runDone';
     render();
@@ -614,14 +706,15 @@
       <section class="card hero">${ring(r.score)}<div>${summary}</div></section>
       ${review}
       <button class="btn" data-run="${r.kind}">Ξανά</button>
-      <button class="btn primary" data-go="${r.kind === 'knowledge' && r.from === 'home' ? 'home' : 'skills'}">Τέλος</button>
+      <button class="btn primary" data-go="sim">Τέλος</button>
     </main>`;
   }
 
   function startSkill(id) {
     const part = skillPart(id);
-    const queue = L.skillQueue(state, part);
-    skill = { part, queue, pos: 0, options: null, picked: null };
+    const due = new Set(L.retryDue(state, id, today()));
+    const queue = [...L.shuffled(part.items.filter((q) => due.has(q.n))), ...L.skillQueue(state, part).filter((q) => !due.has(q.n))];
+    skill = { part, due, queue, pos: 0, options: null, picked: null };
     if (!queue.length) {
       view = 'skillDone';
       render();
@@ -650,6 +743,7 @@
     const q = skill.queue[skill.pos];
     skill.picked = index;
     L.recordSkill(state, skill.part.id, q.n, skill.options[index].correct);
+    L.markRetry(state, skill.part.id, q.n, skill.options[index].correct, today());
     save();
     render();
     document.querySelector('.explain').scrollIntoView({ block: 'nearest' });
@@ -676,11 +770,11 @@
         <span class="count">${num(stats.answered)} / ${num(stats.total)}</span>
       </div>
       <div class="study-body ${answered ? '' : 'enter'}">
-        <div class="tag"><b>${esc(part.name)}</b><span>${esc(q.tag || `Ερώτηση ${q.n}`)}</span></div>
+        <div class="tag"><b>${esc(part.name)}</b><span>${skill.due.has(q.n) ? 'Επανάληψη λάθους · ' : ''}${esc(q.tag || `Ερώτηση ${q.n}`)}</span></div>
         ${q.img ? `<img class="puzzle" src="${esc(q.img)}" alt="${esc(part.name)}, ερώτηση ${q.n}">` : ''}
         ${q.q ? `<p class="stem long">${esc(q.q)}</p>` : ''}
         <div class="options ${part.fixed ? 'letters' : ''}">${buttons}</div>
-        ${answered ? `<div class="explain"><b>${part.id === 'numeric' ? 'Κανόνας' : part.id === 'inductive' ? 'Μοτίβο' : 'Εξήγηση (όχι επίσημη)'}</b><p>${esc(q.e)}</p></div>` : ''}
+        ${answered ? `<div class="explain"><b>${part.id === 'inductive' ? 'Μοτίβο' : 'Εξήγηση (όχι επίσημη)'}</b><p>${esc(q.e)}</p></div>` : ''}
       </div>
       ${answered ? `<div class="feedback" aria-live="polite">
         <p class="verdict ${right ? 'good' : 'bad'}">${right ? 'Σωστά' : `Λάθος <small>· Σωστή η ${esc(rightLabel)}</small>`}</p>
@@ -703,8 +797,8 @@
 
   /* ---------- Πρόοδος ---------- */
 
-  function barChart(id, values, labels, describe) {
-    const max = Math.max(1, ...values);
+  function barChart(id, values, labels, describe, fixedMax) {
+    const max = fixedMax || Math.max(1, ...values);
     const chosen = chartPick[id];
     const bars = values.map((v, i) => `
       <button data-chart="${id}" data-index="${i}" aria-pressed="${chosen === i}" aria-label="${esc(describe(i))}">
@@ -712,6 +806,20 @@
     const axis = labels.map((l) => `<span>${esc(l)}</span>`).join('');
     const caption = chosen === undefined ? 'Πάτα μια μπάρα για να δεις τον αριθμό' : describe(chosen);
     return `<div class="chart">${bars}</div><div class="axis">${axis}</div><p class="caption">${esc(caption)}</p>`;
+  }
+
+  function simCharts() {
+    const shortDay = (d) => dateOf(d).toLocaleDateString('el-GR', { day: 'numeric', month: 'numeric', timeZone: 'UTC' });
+    const charts = ['full', 'knowledge', 'reading', 'inductive'].map((kind) => {
+      const list = (state.exams || []).filter((e) => e.k === kind).slice(-10);
+      if (!list.length) return '';
+      // Πάντα 10 θέσεις, ώστε λίγες προσομοιώσεις να μη γεμίζουν όλο το πλάτος.
+      const pad = 10 - list.length;
+      const values = [...Array(pad).fill(0), ...list.map((e) => e.s)];
+      return `<h3 class="chart-title">${esc(KIND_NAMES[kind])}</h3>${barChart(`sim-${kind}`, values, values.map(() => ''),
+        (i) => (i < pad ? 'Δεν έχει γίνει ακόμη προσομοίωση' : `${shortDay(list[i - pad].d)}: ${values[i]}/100`), 100)}`;
+    }).join('');
+    return charts ? `<section class="card"><h2>Προσομοιώσεις: οι τελευταίοι βαθμοί</h2>${charts}</section>` : '';
   }
 
   function renderProgress() {
@@ -750,6 +858,7 @@
       <section class="card"><h2>Απαντήσεις των τελευταίων 14 ημερών</h2>
         ${barChart('past', pastValues, pastLabels, (i) => `${longDay(past[i])}: ${plural(pastValues[i], 'απάντηση', 'απαντήσεις')}`)}</section>
       <section class="card"><h2>Ετοιμότητα ανά αντικείμενο, από το πιο αδύναμο</h2><div class="subjects">${rows}</div></section>
+      ${simCharts()}
     </main>${tabs()}`;
   }
 
@@ -858,6 +967,7 @@
       const text = reader.queue[reader.pos];
       const right = reader.picks.filter((v, i) => v === text.st[i].a).length;
       state.skills.reading = { ...(state.skills.reading || {}), [text.n]: right };
+      L.markRetry(state, 'reading', text.n, right === 4, today());
       reader.checked = true;
       save();
       render();
@@ -877,12 +987,24 @@
       window.scrollTo(0, 0);
     },
     'run-next': confirmRun,
+    'exam-start'() {
+      if (!confirm('Η πλήρης εξέταση διαρκεί περίπου 2 ώρες. Ξεκινάς τώρα;')) return;
+      exam = { idx: 0, parts: [] };
+      startRun(FULL[0]);
+    },
+    'exam-next'() { startRun(FULL[exam.idx]); },
+    'exam-abort'() {
+      if (!confirm('Η εξέταση θα σταματήσει. Οι δοκιμασίες που τελείωσες μένουν στο ιστορικό. Συνέχεια;')) return;
+      exam = null;
+      view = 'sim';
+      render();
+    },
     'run-exit'() {
       if (!confirm('Η προσομοίωση θα σταματήσει και δεν θα αποθηκευτεί. Συνέχεια;')) return;
       clearInterval(clock);
-      const back = run.from || 'skills';
       run = null;
-      view = back;
+      exam = null;
+      view = 'sim';
       render();
     },
     'run-to-box'() {
@@ -916,11 +1038,11 @@
       save();
       applyTheme();
       render();
-    } else if (go) { view = go; study = null; skill = null; run = null; reader = null; clearInterval(clock); render(); window.scrollTo(0, 0); }
+    } else if (go) { view = go; study = null; skill = null; run = null; reader = null; exam = null; clearInterval(clock); render(); window.scrollTo(0, 0); }
     else if (action) actions[action]();
     else if (picked !== undefined) pick(Number(picked));
     else if (skillId) startSkill(skillId);
-    else if (runKind) { const from = view === 'home' || (view === 'runDone' && run && run.from === 'home') ? 'home' : 'skills'; startRun(runKind); if (run) run.from = from; }
+    else if (runKind) { exam = null; startRun(runKind); }
     else if (runPick !== undefined) { run.choice = Number(runPick); render(); }
     else if (rpick !== undefined) {
       const [i, v] = rpick.split(':').map(Number);
@@ -970,7 +1092,7 @@
     ({
       home: renderHome, study: renderStudy, summary: renderSummary, skills: renderSkills, skill: renderSkill,
       skillDone: renderSkillDone, progress: renderProgress, settings: renderSettings, guide: renderGuide,
-      reading: renderReading, run: renderRun, runDone: renderRunDone,
+      reading: renderReading, run: renderRun, runDone: renderRunDone, sim: renderSim, examBreak: renderExamBreak, examDone: renderExamDone,
     })[view]();
   }
 
