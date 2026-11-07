@@ -106,7 +106,7 @@ def main():
         inductive.append({'n': i, 'img': f'skills/q{i}.svg', 'o': list('ΑΒΓΔΕ'), 'a': answer, 'e': why, 'tag': tag, 'lvl': lvl})
     reading = [{'n': 201 + i, 'lvl': lvl, 'text': text, 'st': [{'s': s, 'a': 'ΣΛΔ'.index(a), 'e': e} for s, a, e in statements]}
                for i, (lvl, text, statements) in enumerate(TEXTS)]
-    assert len(reading) == 60 and all(len(r['st']) == 4 for r in reading)
+    assert len(reading) == 70 and all(len(r['st']) == 4 for r in reading)
 
     scenes = read_scenarios(doc)
     scenarios = [{

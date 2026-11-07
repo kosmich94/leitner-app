@@ -143,9 +143,9 @@ test('αντίγραφο ασφαλείας: δέχεται έγκυρο, απο
   assert.throws(() => L.validateBackup({ app: 'leitner', state: { ...st, cards: { x: { b: 9, d: 1 } } } }));
 });
 
-test('οι δεξιότητες έχουν 27 σενάρια και 42 επαγωγικά, με εικόνα ή κείμενο και εξήγηση', () => {
+test('οι δεξιότητες έχουν 27 σενάρια και 60 επαγωγικά, με εικόνα ή κείμενο και εξήγηση', () => {
   const { parts } = JSON.parse(fs.readFileSync(path.join(__dirname, '../skills.json'), 'utf8'));
-  assert.deepEqual(parts.map((p) => [p.id, p.items.length]), [['work', 27], ['inductive', 42]]);
+  assert.deepEqual(parts.map((p) => [p.id, p.items.length]), [['work', 27], ['inductive', 60]]);
   const items = parts.flatMap((p) => p.items);
   assert.ok(items.every((q) => q.a >= 0 && q.a < q.o.length && q.e && (q.q || q.img)));
   assert.ok(parts[0].items.every((q) => q.o.length === 4));
@@ -164,9 +164,9 @@ test('ο γύρος δεξιοτήτων συνεχίζει από όπου έμ
   assert.equal(L.skillQueue(st, part).length, 3);
 });
 
-test('λεκτικός και τριάδες: 60 κείμενα με 4 δηλώσεις και 76 τριάδες χωρίς επανάληψη', () => {
+test('λεκτικός και τριάδες: 70 κείμενα με 4 δηλώσεις και 76 τριάδες χωρίς επανάληψη', () => {
   const { reading, triads, parts } = JSON.parse(fs.readFileSync(path.join(__dirname, '../skills.json'), 'utf8'));
-  assert.equal(reading.length, 60);
+  assert.equal(reading.length, 70);
   assert.ok(reading.every((t) => t.st.length === 4 && t.st.every((x) => x.a >= 0 && x.a <= 2 && x.e) && [1, 2, 3].includes(t.lvl)));
   assert.equal(triads.length, 76);
   assert.equal(new Set(triads.flat()).size, 228);

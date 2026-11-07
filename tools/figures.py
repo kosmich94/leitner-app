@@ -441,8 +441,145 @@ def generated_items(seed=7):
 import random as random_module  # noqa: E402
 
 
+# ---------- Τύποι που αναφέρθηκε ότι έπεσαν το 2025 ----------
+# Σχήματα μέσα σε σχήματα, σχήμα που περνά στο επόμενο καρέ, εμφάνιση/εξαφάνιση, κουκκίδες που ορίζουν πλευρές,
+# τρία στοιχεία σε πλέγμα, προσανατολισμός γραμμών, αστέρι. Δικές μας ασκήσεις, όχι του ΑΣΕΠ.
+
+KIND_LIST = ['c', 's', 't', 'd', 'p', 'h']
+
+
+def any_shape(kind, r, cx=50, cy=50, fill='#fff'):
+    if kind == 'c':
+        return circle(r, cx, cy, fill)
+    sides, rot = {'s': (4, -45), 't': (3, -90), 'd': (4, -90), 'p': (5, -90), 'h': (6, 0)}[kind]
+    return poly(sides, r * (1.08 if kind in 'st' else 1), cx, cy + (r * .12 if kind == 't' else 0), fill, rot)
+
+
+def nest(kinds):
+    sizes = [40, 27, 15, 8]
+    return ''.join(any_shape(k, sizes[i]) for i, k in enumerate(kinds))
+
+
+def corners_pair(items):
+    """items: λίστα από (θέση 0-3, σχήμα, μαύρο)."""
+    out = rect(14, 14, 72, 72, sw=1.6)
+    for pos, kind, black in items:
+        x, y = [(32, 32), (68, 32), (68, 68), (32, 68)][pos]
+        out += any_shape(kind, 12, x, y, INK if black else '#fff')
+    return out
+
+
+def grid4(marks):
+    """marks: λίστα από (στήλη, γραμμή, τύπος) σε πλέγμα 4x4."""
+    out = ''
+    for r in range(4):
+        for c in range(4):
+            out += rect(14 + c * 18, 14 + r * 18, 18, 18, sw=1.4)
+    for c, r, kind in marks:
+        x, y = 23 + c * 18, 23 + r * 18
+        out += circle(6, x, y, INK) if kind == 'b' else circle(6, x, y, '#fff') if kind == 'w' else poly(3, 7.5, x, y + 1, INK)
+    return out
+
+
+def three_lines(angles):
+    out = ''
+    for i, deg in enumerate(angles):
+        y = 24 + i * 26
+        out += f'<g transform="rotate({deg} 50 {y})"><line x1="38" y1="{y}" x2="62" y2="{y}" stroke="{INK}" stroke-width="4.5" stroke-linecap="round"/></g>'
+    return out
+
+
+def star_fig(tip, count):
+    pts = []
+    for i in range(10):
+        r = 42 if i % 2 == 0 else 17
+        a = math.radians(-90 + i * 36)
+        pts.append((50 + r * math.cos(a), 52 + r * math.sin(a)))
+    out = '<polygon points="' + ' '.join(f'{x:.1f},{y:.1f}' for x, y in pts) + f'" fill="#fff" stroke="{INK}" stroke-width="2.2"/>'
+    tx, ty = pts[(tip % 5) * 2]
+    tx, ty = 50 + (tx - 50) * .78, 52 + (ty - 52) * .78
+    out += circle(5, tx, ty, INK)
+    out += dots(count, 50, 53, 9, 2.6)
+    return out
+
+
+def generated_items_2025(seed=2025):
+    rng = random_module.Random(seed)
+    out = []
+
+    def seq(frames, correct, wrong, lvl, why):
+        options, answer = place(rng, correct, wrong)
+        out.append((sequence_figure(frames + [None], options), answer, why, lvl))
+
+    # 1. Σχήματα μέσα σε σχήματα: κάθε καρέ χάνει το εξωτερικό και κερδίζει νέο εσωτερικό.
+    for depth, lvl in ((3, 3), (2, 2), (4, 3)):
+        order = rng.sample(KIND_LIST, 6)
+        frame = lambda k: [order[(k + i) % 6] for i in range(depth)]
+        good = frame(4)
+        wrong = [nest(list(reversed(good))), nest(frame(3)), nest(good[:-1] + [order[(4 + depth + 1) % 6]]), nest(good[:-1] if depth > 2 else good + [order[(6 + depth) % 6]])]
+        seq([nest(frame(k)) for k in range(4)], nest(good), wrong, lvl,
+            'Το εσωτερικό σχήμα κάθε καρέ γίνεται το επόμενο πιο έξω: σε κάθε βήμα φεύγει το εξωτερικό και μπαίνει ένα νέο στο κέντρο.'
+            if depth > 2 else 'Το εσωτερικό σχήμα κάθε καρέ γίνεται το εξωτερικό του επόμενου, και μέσα του μπαίνει ένα νέο σχήμα.')
+
+    # 2. Εμφάνιση και εξαφάνιση: το νεότερο σχήμα είναι μαύρο, το παλαιότερο λευκό, και προχωρούν δεξιόστροφα.
+    for keep in (2, 2, 3):
+        kinds = rng.sample(KIND_LIST, 4)
+        frame = lambda k: [((k + i) % 4, kinds[(k + i) % 4], i == keep - 1) for i in range(keep)]
+        good = frame(4)
+        swap = [(p, kd, not b) for p, kd, b in good]
+        extra = good + [((4 + keep) % 4, kinds[(4 + keep) % 4], False)] if keep == 2 else good[:2]
+        wrong_kind = [(p, kinds[(p + 1) % 4] if i == 0 else kd, b) for i, (p, kd, b) in enumerate(good)]
+        seq([corners_pair(frame(k)) for k in range(4)], corners_pair(good),
+            [corners_pair(frame(3)), corners_pair(swap), corners_pair(extra), corners_pair(wrong_kind)], 2,
+            'Σε κάθε βήμα εμφανίζεται ένα νέο σχήμα στην επόμενη γωνία δεξιόστροφα (μαύρο, γιατί είναι το νεότερο) και εξαφανίζεται το παλαιότερο. Κάθε γωνία έχει πάντα το ίδιο σχήμα.')
+
+    # 3. Οι κουκκίδες ορίζουν τις πλευρές του επόμενου σχήματος.
+    for s0, d0 in ((3, 5), (4, 6), (5, 3)):
+        states = [(s0, d0)]
+        for _ in range(4):
+            s, d = states[-1]
+            states.append((d, s + 1))
+        fig = lambda s, d: poly(s, 38, rot=-90 if s % 2 else -90 + 180 / s) + dots(d, 50, 52, 15, 3.4)
+        s4, d4 = states[4]
+        wrong = [fig(d4, s4), fig(s4, d4 - 1), fig(s4 + 1, d4), fig(s4, d4 + 1)]
+        seq([fig(*st) for st in states[:4]], fig(s4, d4), wrong, 3,
+            'Οι κουκκίδες κάθε καρέ δίνουν τις πλευρές του επόμενου σχήματος, και οι νέες κουκκίδες είναι οι πλευρές του προηγούμενου συν μία.')
+
+    # 4. Τρία στοιχεία κινούνται μαζί σε πλέγμα 4x4.
+    made = 0
+    while made < 3:
+        b0, w0, t0 = (rng.randrange(4), rng.randrange(4)), (rng.randrange(4), rng.randrange(4)), (rng.randrange(4), rng.randrange(4))
+        pos = lambda k: [((b0[0] + k) % 4, b0[1], 'b'), (w0[0], (w0[1] + k) % 4, 'w'), ((t0[0] + k) % 4, (t0[1] + k) % 4, 't')]
+        if any(len({(c, r) for c, r, _ in pos(k)}) < 3 for k in range(6)):
+            continue
+        good = pos(4)
+        b, w, t = good
+        variants = [[pos(3)[0], w, t], [b, pos(5)[1], t], [b, w, pos(3)[2]], [(w[0], w[1], 'b'), (b[0], b[1], 'w'), t]]
+        if any(len({(c, r) for c, r, _ in v}) < 3 for v in variants) or len({grid4(v) for v in variants} | {grid4(good)}) < 5:
+            continue
+        seq([grid4(pos(k)) for k in range(4)], grid4(good), [grid4(v) for v in variants], 3,
+            'Τρεις κανόνες μαζί: η μαύρη κουκκίδα πάει μία θέση δεξιά, η λευκή μία θέση κάτω και το τρίγωνο μία θέση διαγώνια. Στην άκρη ξαναρχίζουν από την αρχή.')
+        made += 1
+
+    # 5. Γραμμές που αλλάζουν προσανατολισμό με διαφορετικό κανόνα ανά σειρά.
+    for a1, step in ((0, 45), (90, -45), (45, 90)):
+        ang = lambda k: [(a1 + k * step) % 180, 0, 90 * (k % 2)]
+        good = ang(4)
+        wrong = [[(a1 + 3 * step) % 180, 0, 0], [good[0], 90, good[2]], [good[0], 0, 90], [(good[0] + 45) % 180 if (good[0] + 45) % 180 != (a1 + 3 * step) % 180 else (good[0] + 135) % 180, 0, good[2]]]
+        seq([three_lines(ang(k)) for k in range(4)], three_lines(good), [three_lines(v) for v in wrong], 2,
+            f'Κάθε σειρά έχει δικό της κανόνα: η πάνω γραμμή στρέφεται {abs(step)}°, η μεσαία μένει οριζόντια και η κάτω εναλλάσσεται οριζόντια και κάθετη.')
+
+    # 6. Αστέρι: η κουκκίδα πηδά δύο μύτες και οι κουκκίδες στο κέντρο αυξάνονται.
+    for t0, c0 in ((0, 1), (3, 2), (1, 1)):
+        good = star_fig(t0 + 8, c0 + 4)
+        wrong = [star_fig(t0 + 6, c0 + 4), star_fig(t0 + 9, c0 + 4), star_fig(t0 + 8, c0 + 3), star_fig(t0 + 8, c0 + 5)]
+        seq([star_fig(t0 + 2 * k, c0 + k) for k in range(4)], good, wrong, 2,
+            'Η μαύρη κουκκίδα πηδά δύο μύτες δεξιόστροφα σε κάθε βήμα και οι κουκκίδες στο κέντρο αυξάνονται κατά μία.')
+    return out
+
+
 def inductive_bank():
     """Όλες οι ασκήσεις επαγωγικού: (λεζάντα, svg, θέση σωστής, εξήγηση, επίπεδο)."""
     base = [(tag, figure, answer, why, lvl) for (tag, figure, answer, why), lvl in zip(inductive_items(), LEVELS)]
-    extra = [('Άσκηση εξάσκησης', figure, answer, why, lvl) for figure, answer, why, lvl in generated_items()]
+    extra = [('Άσκηση εξάσκησης', figure, answer, why, lvl) for figure, answer, why, lvl in generated_items() + generated_items_2025()]
     return base + extra
