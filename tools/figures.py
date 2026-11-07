@@ -706,8 +706,332 @@ def generated_items_hard(seed=4040):
     return out
 
 
+# ---------- Οι 8 κατηγορίες επαγωγικού σε όλα τα επίπεδα ----------
+# Περιστροφή, μετακίνηση θέσης, εναλλαγή, αύξηση/μείωση, συνδυασμός σχημάτων, αφαίρεση στοιχείων, καθρέφτισμα, χρώμα/σκίαση.
+# Οι κατηγορίες ακολουθούν όσες παρουσιάζουν σελίδες προετοιμασίας (π.χ. e-asep.gr). Οι ασκήσεις είναι δικές μας.
+
+def glyph(f, r, cx=50, cy=50, s=1.0, color=INK):
+    """Ασύμμετρο «F»: κάθε συνδυασμός περιστροφής και καθρεφτίσματος φαίνεται διαφορετικός."""
+    body = (f'<path d="M40 76V24H66M40 48H58" fill="none" stroke="{color}" stroke-width="7" stroke-linecap="square"/>'
+            f'<circle cx="62" cy="70" r="5" fill="{color}"/>')
+    return f'<g transform="translate({cx} {cy}) rotate({r % 360}) scale({-s if f else s} {s}) translate(-50 -50)">{body}</g>'
+
+
+def flip_h(state):
+    f, r = state
+    return (1 - f, (-r) % 360)
+
+
+def flip_v(state):
+    f, r = state
+    return (1 - f, (180 - r) % 360)
+
+
+def turn(state, d):
+    f, r = state
+    return (f, (r + d) % 360)
+
+
+ALL_STATES = [(f, r) for f in (0, 1) for r in (0, 90, 180, 270)]
+
+
+def small_arrow(deg, cx, cy, s=.55):
+    return f'<g transform="translate({cx} {cy}) scale({s}) translate(-50 -50)">{arrow(deg)}</g>'
+
+
+def row_shapes(kinds, slots=7, fills=None):
+    step = 72 / (slots - 1)
+    out = ''
+    for i, k in enumerate(kinds):
+        if k is None:
+            continue
+        out += any_shape(k, 6.5, 14 + i * step, 50, fills[i] if fills else '#fff')
+    return out
+
+
+def dot_ring(present, black=None):
+    out = ''
+    for i in range(8):
+        a = math.radians(-90 + i * 45)
+        x, y = 50 + 30 * math.cos(a), 50 + 30 * math.sin(a)
+        if i in present:
+            out += circle(7, x, y, INK if (black is None or i in black) else '#fff')
+        else:
+            out += f'<circle cx="{x:.1f}" cy="{y:.1f}" r="7" fill="none" stroke="{GREY}" stroke-width="1.5" stroke-dasharray="2 2"/>'
+    return out
+
+
+def cells9(black):
+    out = ''
+    for i in range(9):
+        r, c = divmod(i, 3)
+        out += rect(20 + c * 20, 20 + r * 20, 20, 20, INK if i in black else '#fff', sw=1.6)
+    return out
+
+
+def corner_mark(kind, corner, fill):
+    x, y = CORNERS[corner]
+    return rect(10, 10, 80, 80, sw=1.4) + any_shape(kind, 11, x, y, fill)
+
+
+def generated_categories(seed=8):
+    rng = random_module.Random(seed)
+    out = []
+
+    def distinct(correct, wrong, extra):
+        picked = []
+        for w in list(wrong) + list(extra):
+            if w != correct and w not in picked:
+                picked.append(w)
+        if len(picked) < 4:
+            raise AssertionError('λίγες διαφορετικές επιλογές')
+        return picked[:4]
+
+    def seq(frames, correct, wrong, lvl, why, extra=()):
+        options, answer = place(rng, correct, distinct(correct, wrong, extra))
+        out.append((sequence_figure(frames + [None], options), answer, why, lvl))
+
+    def mat(cells, correct, wrong, lvl, why, extra=()):
+        options, answer = place(rng, correct, distinct(correct, wrong, extra))
+        out.append((matrix_figure(cells + [None], options), answer, why, lvl))
+    # Σημείωση: όπου οι επιλογές δεν βγαίνουν διαφορετικές, η άσκηση παραλείπεται (βλ. try/except παρακάτω).
+
+    def others(good, pool):
+        return [x for x in pool if x != good]
+
+    # ---- Καθρέφτισμα ----
+    for r0 in (0, 90):
+        s0 = (0, r0)
+        st = [s0, flip_h(s0), s0, flip_h(s0)]
+        good = s0
+        wrong = others(good, [flip_h(s0), flip_v(s0), turn(s0, 90), turn(s0, 180)])
+        seq([glyph(*x) for x in st], glyph(*good), [glyph(*x) for x in wrong], 1, extra=[glyph(*x) for x in ALL_STATES], why=
+            'Το σχήμα καθρεφτίζεται οριζόντια σε κάθε βήμα, οπότε επιστρέφει στην αρχική του μορφή κάθε δεύτερο καρέ.')
+    for r0 in (0, 270):
+        st = [(0, r0)]
+        for k in range(4):
+            st.append(flip_h(st[-1]) if k % 2 == 0 else flip_v(st[-1]))
+        wrong = others(st[4], [st[3], flip_h(st[4]), turn(st[4], 90), turn(st[4], 270)])
+        seq([glyph(*x) for x in st[:4]], glyph(*st[4]), [glyph(*x) for x in wrong], 2, extra=[glyph(*x) for x in ALL_STATES], why=
+            'Το σχήμα καθρεφτίζεται εναλλάξ οριζόντια και κάθετα, και κάθε καθρέφτισμα γίνεται πάνω στο προηγούμενο καρέ.')
+    for d in (90, -90):
+        pair = lambda st, right: glyph(*st, cx=30, s=.5) + glyph(*right, cx=70, s=.5) + f'<line x1="50" y1="18" x2="50" y2="82" stroke="{GREY}" stroke-width="1.5" stroke-dasharray="3 3"/>'
+        left = lambda k: (0, (k * d) % 360)
+        good = pair(left(4), flip_h(left(4)))
+        wrong = [pair(left(4), left(4)), pair(left(4), flip_v(left(4))), pair(left(3), flip_h(left(3))), pair(flip_h(left(4)), left(4) if False else turn(flip_h(left(4)), 180))]
+        seq([pair(left(k), flip_h(left(k))) for k in range(4)], good, wrong, 3, extra=[pair(left(4), x) for x in ALL_STATES], why=
+            f'Το αριστερό σχήμα στρέφεται {abs(d)}° {"δεξιόστροφα" if d > 0 else "αριστερόστροφα"} σε κάθε βήμα και το δεξί είναι πάντα το καθρέφτισμά του ως προς την κάθετη γραμμή.')
+    for r0 in (0, 180):
+        st = [(0, r0)]
+        for _ in range(4):
+            st.append(flip_h(turn(st[-1], 90)))
+        f = lambda s, n: glyph(*s) + dots(n, 84, 16, 12, 3.2)
+        wrong = [f(turn(st[3], 90), 5), f(st[4], 4), f(flip_h(st[4]), 5), f(turn(st[4], 90), 5)]
+        seq([f(st[k], k + 1) for k in range(4)], f(st[4], 5), wrong, 4, extra=[f(x, 5) for x in ALL_STATES], why=
+            'Δύο κανόνες: σε κάθε βήμα το σχήμα στρέφεται 90° δεξιόστροφα και μετά καθρεφτίζεται οριζόντια· οι κουκκίδες αυξάνονται κατά μία.')
+    for r0 in (0, 90):
+        ops = [flip_h, lambda x: turn(x, 90), flip_v, lambda x: turn(x, 90)]
+        st = [(0, r0)]
+        for k in range(4):
+            st.append(ops[k](st[-1]))
+        bg = lambda k: GREY if (k // 2) % 2 else '#fff'
+        f = lambda s, k: rect(8, 8, 84, 84, bg(k), sw=0) + glyph(*s)
+        wrong = [f(st[3], 4), f(flip_h(st[4]), 4), f(st[4], 2), f(turn(st[4], 90), 4)]
+        seq([f(st[k], k) for k in range(4)], f(st[4], 4), wrong, 5, extra=[f(x, 4) for x in ALL_STATES], why=
+            'Τρεις κανόνες: οι αλλαγές επαναλαμβάνονται με τη σειρά «καθρέφτισμα οριζόντια, στροφή 90°, καθρέφτισμα κάθετα, στροφή 90°», και το φόντο αλλάζει ανά δύο καρέ (λευκό, λευκό, γκρι, γκρι, λευκό).')
+
+    # ---- Αφαίρεση στοιχείων ----
+    for _ in range(2):
+        kinds = rng.sample(KIND_LIST, 5)
+        frame = lambda k: kinds[:5 - k] + [None] * k
+        good = row_shapes(frame(4), 5)
+        wrong = [row_shapes(kinds[:2] + [None] * 3, 5), row_shapes([None] * 4 + [kinds[4]], 5), row_shapes([kinds[1]] + [None] * 4, 5), row_shapes([None] * 5, 5)]
+        seq([row_shapes(frame(k), 5) for k in range(4)], good, wrong, 1,
+            'Σε κάθε βήμα αφαιρείται το τελευταίο σχήμα από τα δεξιά. Μένει μόνο το πρώτο.')
+    for start in (0, 2):
+        pres = lambda k: {(start + i) % 8 for i in range(k, 8)}
+        good = dot_ring(pres(4))
+        wrong = [dot_ring({(start - i) % 8 for i in range(4, 8)}), dot_ring(pres(3)), dot_ring(pres(5)), dot_ring({(start + i) % 8 for i in range(0, 8, 2)})]
+        seq([dot_ring(pres(k)) for k in range(4)], good, wrong, 2,
+            'Σε κάθε βήμα αφαιρείται μία κουκκίδα, προχωρώντας δεξιόστροφα. Μετά από τέσσερα βήματα μένει η μισή στεφάνη.')
+    for _ in range(2):
+        kinds = rng.sample(KIND_LIST, 6) + [rng.choice(KIND_LIST)]
+        bounds = [(0, 7), (1, 7), (1, 6), (2, 6), (2, 5)]
+        frame = lambda k: [kinds[i] if bounds[k][0] <= i < bounds[k][1] else None for i in range(7)]
+        good = row_shapes(frame(4))
+        wrong = [row_shapes(frame(3)), row_shapes([kinds[i] if 3 <= i < 6 else None for i in range(7)]), row_shapes([kinds[i] if 2 <= i < 4 else None for i in range(7)]), row_shapes([kinds[i] if i in (2, 4, 5) else None for i in range(7)])]
+        seq([row_shapes(frame(k)) for k in range(4)], good, wrong, 3,
+            'Τα σχήματα αφαιρούνται εναλλάξ: ένα από αριστερά, μετά ένα από δεξιά, ξανά αριστερά και ούτω καθεξής.')
+    keys = list(SEGMENTS)
+    made = 0
+    while made < 2:
+        rows = []
+        for _ in range(3):
+            a = set(rng.sample(keys, 4))
+            b = set(rng.sample(sorted(a), 2))
+            rows.append((a, b, a - b))
+        a, b, c = rows[2]
+        wrong = [segs(a), segs(b), segs(c | {rng.choice(sorted(b))}), segs(a ^ {rng.choice([k for k in keys if k not in a])})]
+        try:
+            mat([segs(x) for r in rows for x in r][:8], segs(c), wrong, 4,
+                'Η τρίτη στήλη είναι η πρώτη χωρίς τις γραμμές της δεύτερης: αφαιρείς ό,τι υπάρχει στο δεύτερο σχήμα.')
+            made += 1
+        except AssertionError:
+            continue
+    for _ in range(2):
+        kinds = rng.sample(KIND_LIST, 6)
+        seqs = [kinds[k:] for k in range(5)]
+        order = lambda k: seqs[k] if k % 2 == 0 else list(reversed(seqs[k]))
+        fill = lambda k: [INK if (i + k) % 2 == 0 else '#fff' for i in range(len(seqs[k]))]
+        f = lambda items, fills: row_shapes(items + [None] * (6 - len(items)), 6, fills + ['#fff'] * (6 - len(fills)))
+        good = f(order(4), fill(4))
+        wrong = [f(list(reversed(order(4))), fill(4)), f(order(4), fill(3)), f(order(3), fill(4)[:len(order(3))] + ['#fff']), f(kinds[3:5], fill(4))]
+        seq([f(order(k), fill(k)) for k in range(4)], good, wrong, 5,
+            'Τρεις κανόνες: σε κάθε βήμα αφαιρείται το πρώτο σχήμα της αρχικής σειράς, η σειρά αντιστρέφεται κάθε δεύτερο καρέ, και τα μαύρα–λευκά εναλλάσσονται.')
+
+    # ---- Εναλλαγή ----
+    for pair in (('c', 's'), ('t', 'h')):
+        f = lambda k: any_shape(pair[k % 2], 30)
+        wrong = [any_shape(pair[1], 30), any_shape(pair[0], 30, fill=INK), any_shape('d' if 'd' not in pair else 'p', 30), any_shape(pair[0], 18)]
+        seq([f(k) for k in range(4)], f(4), wrong, 1, 'Τα δύο σχήματα εναλλάσσονται σε κάθε βήμα.')
+    for _ in range(2):
+        kinds = rng.sample(['c', 's', 't', 'p'], 3)
+        f = lambda k: any_shape(kinds[k % 3], 30, fill=INK if k % 2 == 0 else '#fff')
+        wrong = [any_shape(kinds[1], 30), any_shape(kinds[2], 30, fill=INK), any_shape(kinds[0], 30, fill=INK), any_shape(kinds[1], 30, fill=INK)]
+        seq([f(k) for k in range(4)], f(4), wrong, 3, extra=[any_shape(x, 30, fill=c) for x in kinds + ['d'] for c in (INK, '#fff')], why=
+            'Δύο εναλλαγές με διαφορετικό ρυθμό: τα σχήματα επαναλαμβάνονται ανά τρία, ενώ το χρώμα εναλλάσσεται μαύρο–λευκό σε κάθε βήμα.')
+    for _ in range(2):
+        kinds = rng.sample(['c', 's', 't'], 3)
+        f = lambda k: corner_mark(kinds[k % 3], k % 4, INK if k % 2 == 0 else '#fff')
+        wrong = [corner_mark(kinds[1], 0, INK), corner_mark(kinds[1], 1, '#fff'), corner_mark(kinds[1], 0, '#fff'), corner_mark(kinds[2], 0, INK)]
+        seq([f(k) for k in range(4)], f(4), wrong, 4, extra=[corner_mark(x, c, fl) for x in kinds for c in range(4) for fl in (INK, '#fff')], why=
+            'Τρεις εναλλαγές μαζί: σχήμα ανά τρία, χρώμα ανά δύο, και θέση που προχωρά μία γωνία δεξιόστροφα.')
+    for _ in range(2):
+        kinds = rng.sample(['c', 's', 't'], 3)
+        f = lambda k: corner_mark(kinds[k % 3], (2 * k) % 4, INK if (k // 2) % 2 == 0 else '#fff') + dots(k + 1, 50, 50, 12, 3.2)
+        k = 4
+        wrong = [corner_mark(kinds[1], 0, INK) + dots(4, 50, 50, 12, 3.2), corner_mark(kinds[1], 2, INK) + dots(5, 50, 50, 12, 3.2),
+                 corner_mark(kinds[1], 0, '#fff') + dots(5, 50, 50, 12, 3.2), corner_mark(kinds[2], 0, INK) + dots(5, 50, 50, 12, 3.2)]
+        seq([f(i) for i in range(4)], f(4), wrong, 5, extra=[corner_mark(x, c, fl) + dots(5, 50, 50, 12, 3.2) for x in kinds for c in range(4) for fl in (INK, '#fff')], why=
+            'Τέσσερις κανόνες: σχήμα ανά τρία, θέση που πηδά δύο γωνίες, χρώμα που αλλάζει ανά δύο καρέ, και κουκκίδες που αυξάνονται κατά μία.')
+
+    # ---- Συνδυασμός σχημάτων ----
+    single = [('t',), ('b',), ('l',), ('r',)]
+    for _ in range(2):
+        rows = []
+        pool = rng.sample(['t', 'b', 'l', 'r', 'd', 'e'], 6)
+        for i in range(3):
+            a, b = pool[(2 * i) % 6], pool[(2 * i + 1) % 6]
+            rows.append(({a}, {b}, {a, b}))
+        a, b, c = rows[2]
+        wrong = [segs(a), segs(b), segs(c | {rng.choice([x for x in pool if x not in c])}), segs({rng.choice([x for x in pool if x not in c])} | a)]
+        mat([segs(x) for r in rows for x in r][:8], segs(c), wrong, 1, 'Η τρίτη στήλη βάζει μαζί τη γραμμή του πρώτου και τη γραμμή του δεύτερου σχήματος.')
+    made = 0
+    while made < 2:
+        rows = []
+        for _ in range(3):
+            a, b = set(rng.sample(keys, 2)), set(rng.sample(keys, 2))
+            rows.append((a, b, a | b))
+        a, b, c = rows[2]
+        rest = [x for x in keys if x not in c]
+        if not rest:
+            continue
+        wrong = [segs(a ^ b) if a ^ b != c else segs(a), segs(a), segs(b), segs(c | {rest[0]})]
+        try:
+            mat([segs(x) for r in rows for x in r][:8], segs(c), wrong, 2, 'Η τρίτη στήλη ενώνει όλες τις γραμμές των δύο πρώτων σχημάτων.')
+            made += 1
+        except AssertionError:
+            continue
+    made = 0
+    while made < 2:
+        rows = []
+        for _ in range(3):
+            a, b = set(rng.sample(keys, 3)), set(rng.sample(keys, 3))
+            rows.append((a, b, a ^ b))
+        a, b, c = rows[2]
+        if len(c) < 2 or not (a & b) or any(not r[2] for r in rows):
+            continue
+        wrong = [segs(a | b), segs(a & b), segs(c | {sorted(a & b)[0]}), segs(c - {sorted(c)[0]})]
+        try:
+            mat([segs(x) for r in rows for x in r][:8], segs(c), wrong, 4,
+                'Η τρίτη στήλη κρατά μόνο όσες γραμμές υπάρχουν σε ένα από τα δύο σχήματα· όσες υπάρχουν και στα δύο σβήνουν.')
+            made += 1
+        except AssertionError:
+            continue
+    made = 0
+    while made < 2:
+        rows = []
+        for _ in range(3):
+            a, b = set(rng.sample(keys, 2)), set(rng.sample(keys, 2))
+            x, y = rng.randint(1, 3), rng.randint(1, 3)
+            rows.append(((a, x), (b, y), (a | b, x + y)))
+        (a, x), (b, y), (c, n) = rows[2]
+        cell = lambda sg, k: segs(sg) + dots(k, 50, 50, 10, 3.2)
+        wrong = [cell(c, n + 1), cell(a ^ b if a ^ b != c else a, n), cell(c, max(x, y)), cell(a, n)]
+        try:
+            mat([cell(*v) for r in rows for v in r][:8], cell(c, n), wrong, 5,
+                'Δύο κανόνες συνδυασμού: οι γραμμές της τρίτης στήλης είναι όλες οι γραμμές των δύο πρώτων, και οι κουκκίδες είναι το άθροισμά τους.')
+            made += 1
+        except AssertionError:
+            continue
+
+    # ---- Χρώμα και σκίαση ----
+    for start in (0, 1):
+        sh = lambda k: {(start + k) % 4} if k % 2 == 0 else {(start + k) % 4, (start + k + 1) % 4}
+        wrong = [quad(sh(3)), quad({(start + 3) % 4}), quad(sh(5)), quad({(start + 4) % 4, (start + 2) % 4})]
+        seq([quad(sh(k)) for k in range(4)], quad(sh(4)), wrong, 2,
+            'Η σκίαση προχωρά δεξιόστροφα μία θέση σε κάθε βήμα, και εναλλάξ σκιάζεται ένα ή δύο τετράγωνα.')
+    for _ in range(2):
+        base = set(rng.sample(range(9), 3))
+        blk = lambda k: {(c + k) % 9 for c in base} if k % 2 == 0 else set(range(9)) - {(c + k) % 9 for c in base}
+        wrong = [cells9({(c + 4) % 9 for c in base} ^ set(range(9))), cells9({(c + 3) % 9 for c in base}), cells9({(c + 5) % 9 for c in base}), cells9(base)]
+        try:
+            seq([cells9(blk(k)) for k in range(4)], cells9(blk(4)), wrong, 5,
+                'Δύο κανόνες: το μοτίβο προχωρά ένα κελί σε κάθε βήμα (από αριστερά προς τα δεξιά, γραμμή-γραμμή), και κάθε δεύτερο καρέ τα χρώματα αντιστρέφονται.')
+        except AssertionError:
+            print('προειδοποίηση: παραλείφθηκε μία άσκηση λόγω ίδιων επιλογών')
+
+    # ---- Περιστροφή ----
+    for a0 in (0, 90):
+        f = lambda k: small_arrow((a0 + 45 * k) % 360, 50, 28) + small_arrow((a0 - 90 * k) % 360, 50, 72)
+        wrong = [small_arrow((a0 + 180) % 360, 50, 28) + small_arrow((a0 + 90) % 360, 50, 72), small_arrow((a0 + 135) % 360, 50, 28) + small_arrow(a0 % 360, 50, 72),
+                 small_arrow((a0 + 180) % 360, 50, 28) + small_arrow((a0 + 180) % 360, 50, 72), small_arrow(a0 % 360, 50, 28) + small_arrow(a0 % 360, 50, 72)]
+        try:
+            seq([f(k) for k in range(4)], f(4), wrong, 3, extra=[small_arrow((a0 + 45 * i) % 360, 50, 28) + small_arrow((a0 + 90 * j) % 360, 50, 72) for i in range(8) for j in range(4)], why='Δύο βέλη με διαφορετικό κανόνα: το πάνω στρέφεται 45° δεξιόστροφα και το κάτω 90° αριστερόστροφα.')
+        except AssertionError:
+            print('προειδοποίηση: παραλείφθηκε μία άσκηση λόγω ίδιων επιλογών')
+    for a0 in (0, 45):
+        ang = [a0, a0 + 45, a0 + 135, a0 + 270, a0 + 450]
+        bg = lambda k: GREY if k % 2 else '#fff'
+        f = lambda k, a: rect(8, 8, 84, 84, bg(k), sw=0) + arrow(a % 360)
+        wrong = [f(4, ang[3] + 135), f(4, ang[3] + 180), f(3, ang[4]), f(4, ang[4] + 90)]
+        seq([f(k, ang[k]) for k in range(4)], f(4, ang[4]), wrong, 5, extra=[f(4, ang[4] + 45 * i) for i in range(1, 8)] + [f(3, ang[4] + 45 * i) for i in range(1, 8)], why=
+            'Η γωνία στροφής μεγαλώνει σε κάθε βήμα (45°, 90°, 135°, 180°) και το φόντο εναλλάσσεται λευκό–γκρι.')
+
+    # ---- Μετακίνηση θέσης ----
+    snake = [0, 1, 2, 5, 4, 3, 6, 7, 8]
+    for st0, step in ((0, 2), (1, 3)):
+        pos = lambda k: snake[(st0 + step * k) % 9]
+        wrong = [cells9({snake[(st0 + step * 3) % 9]}), cells9({(pos(4) + 1) % 9}), cells9({snake[(st0 + step * 4 + 1) % 9]}), cells9({8 - pos(4)})]
+        try:
+            seq([cells9({pos(k)}) for k in range(4)], cells9({pos(4)}), wrong, 3,
+                f'Το μαύρο κελί κινείται σαν φίδι: δεξιά στην πρώτη γραμμή, αριστερά στη δεύτερη, δεξιά στην τρίτη, {step} κελιά σε κάθε βήμα.')
+        except AssertionError:
+            print('προειδοποίηση: παραλείφθηκε μία άσκηση λόγω ίδιων επιλογών')
+
+    # ---- Αύξηση ή μείωση ----
+    for start in (1, 2):
+        cnt = [start]
+        for k in range(1, 5):
+            cnt.append(cnt[-1] + k)
+        wrong = [dots(cnt[3] + 3), dots(cnt[4] - 1), dots(cnt[4] + 1), dots(cnt[3] * 2)]
+        seq([dots(cnt[k]) for k in range(4)], dots(cnt[4]), wrong, 3, extra=[dots(cnt[4] + i) for i in (2, -2, 3, -3)], why=
+            'Οι κουκκίδες αυξάνονται με βήμα που μεγαλώνει: +1, +2, +3, +4.')
+    return out
+
+
 def inductive_bank():
     """Όλες οι ασκήσεις επαγωγικού: (λεζάντα, svg, θέση σωστής, εξήγηση, επίπεδο)."""
     base = [(tag, figure, answer, why, lvl) for (tag, figure, answer, why), lvl in zip(inductive_items(), LEVELS)]
-    extra = [('Άσκηση εξάσκησης', figure, answer, why, lvl) for figure, answer, why, lvl in generated_items() + generated_items_2025() + generated_items_hard()]
+    extra = [('Άσκηση εξάσκησης', figure, answer, why, lvl) for figure, answer, why, lvl in generated_items() + generated_items_2025() + generated_items_hard() + generated_categories()]
     return base + extra

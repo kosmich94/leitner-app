@@ -364,7 +364,12 @@
           <span class="bar"><i style="width:${rp.answered / rp.total * 100}%"></i></span>
           <span class="hint">Κείμενο και 4 δηλώσεις: Σωστό, Λάθος ή Δεν μπορεί να απαντηθεί.${rp.answered ? ` Σωστές δηλώσεις: ${num(rp.correct)} από ${num(rp.answered * 4)}.` : ''}${retryNote('reading')}</span>
         </button>
-        ${partRow(skillPart('inductive'))}${partRow(skillPart('work'))}</div></section>
+        <button class="subject" data-skill="inductive">
+          <span class="name">Επαγωγικός συλλογισμός</span>
+          <span class="meta">${num(skillPart('inductive').items.length)} ασκήσεις<span class="chev">›</span></span>
+          <span class="hint">8 κατηγορίες σε 5 επίπεδα. Η δυσκολία ανεβαίνει με τις σωστές και πέφτει με τις λάθος (CAT), χωρίς όριο ερωτήσεων.${retryNote('inductive')}</span>
+        </button>
+        ${partRow(skillPart('work'))}</div></section>
       ${STRATEGY.map(([title, tips]) => `<details class="card tips"><summary>${esc(title)}</summary><ul class="facts">${tips.map((t) => `<li>${esc(t)}</li>`).join('')}</ul></details>`).join('')}
       <p class="sub note">Τα λάθη ξαναβγαίνουν μετά από 2 ημέρες, μέχρι να τα απαντήσεις σωστά. Τα κείμενα λεκτικού, οι ασκήσεις επαγωγικού (εκτός από 2 επίσημα παραδείγματα) και όλες οι εξηγήσεις είναι δικό μας υλικό, όχι του ΑΣΕΠ.</p>
     </main>${tabs()}`;
@@ -458,7 +463,7 @@
         <li>Δεν βγαίνεις από την αίθουσα πριν τελειώσουν όλες οι δοκιμασίες.</li></ul></section>
       <section class="card"><h2>Συμβουλές</h2><ul class="facts">
         <li>Γνώσεις: περίπου 1 λεπτό ανά ερώτηση. Διάβασε όλες τις επιλογές πριν πατήσεις.</li>
-        <li>Επαγωγικός: περίπου 80″ ανά ερώτηση. Στην εφαρμογή οι ασκήσεις έχουν 5 επίπεδα· η προσομοίωση ξεκινά από το 3 και ανεβαίνει ή κατεβαίνει με κάθε απάντηση. Ψάξε πρώτα κίνηση, πλήθος, χρώμα και περιστροφή. Αν κολλήσεις πάνω από ένα λεπτό, απόκλεισε ό,τι δεν ταιριάζει, διάλεξε και προχώρα.</li>
+        <li>Επαγωγικός: περίπου 80″ ανά ερώτηση. Στην εφαρμογή οι ασκήσεις καλύπτουν 8 κατηγορίες (περιστροφή, μετακίνηση, εναλλαγή, αύξηση/μείωση, συνδυασμός, αφαίρεση, καθρέφτισμα, χρώμα) σε 5 επίπεδα· και η εξάσκηση και η προσομοίωση ξεκινούν από το 3 και ανεβαίνουν ή κατεβαίνουν με κάθε απάντηση. Ψάξε πρώτα κίνηση, πλήθος, χρώμα και περιστροφή. Αν κολλήσεις πάνω από ένα λεπτό, απόκλεισε ό,τι δεν ταιριάζει, διάλεξε και προχώρα.</li>
         <li>Λεκτικός: «Λάθος» σημαίνει ότι το κείμενο λέει το αντίθετο. «Δεν μπορεί» σημαίνει ότι το κείμενο δεν το λέει, ακόμη κι αν είναι αληθινό στην πραγματικότητα.</li>
         <li>Τριάδες: περίπου 23″ ανά τριάδα. Απάντα με βάση το πώς δουλεύεις συνήθως και τελείωσε και τις 76.</li></ul></section>
       <section class="card"><h2>Πηγές</h2><ul class="facts links">
@@ -727,10 +732,14 @@
   function startSkill(id) {
     const part = skillPart(id);
     const due = new Set(L.retryDue(state, id, today()));
-    const fresh = L.skillQueue(state, part).filter((q) => !due.has(q.n));
-    // Ο επαγωγικός πηγαίνει από τα εύκολα στα δύσκολα· μέσα σε κάθε επίπεδο η σειρά είναι τυχαία.
-    if (id === 'inductive') fresh.sort((a, b) => a.lvl - b.lvl);
-    const queue = [...L.shuffled(part.items.filter((q) => due.has(q.n))), ...fresh];
+    const retries = L.shuffled(part.items.filter((q) => due.has(q.n)));
+    if (id === 'inductive') {
+      // Εξάσκηση με CAT χωρίς όριο: πρώτα οι επαναλήψεις λαθών, μετά η δυσκολία ακολουθεί τις απαντήσεις.
+      skill = { part, due, queue: retries, pos: 0, options: null, picked: null, cat: { level: 3, used: new Set(retries.map((q) => q.n)), done: 0, right: 0 } };
+      nextSkill();
+      return;
+    }
+    const queue = [...retries, ...L.skillQueue(state, part).filter((q) => !due.has(q.n))];
     skill = { part, due, queue, pos: 0, options: null, picked: null };
     if (!queue.length) {
       view = 'skillDone';
@@ -741,6 +750,16 @@
   }
 
   function nextSkill() {
+    if (skill.cat && skill.pos >= skill.queue.length) {
+      const { cat } = skill;
+      let pick = L.pickAdaptive(skill.part.items, cat.level, cat.used);
+      if (!pick) {
+        cat.used.clear();
+        pick = L.pickAdaptive(skill.part.items, cat.level, cat.used);
+      }
+      cat.used.add(pick.n);
+      skill.queue.push(pick);
+    }
     const q = skill.queue[skill.pos];
     if (!q) {
       view = 'skillDone';
@@ -761,6 +780,13 @@
     skill.picked = index;
     L.recordSkill(state, skill.part.id, q.n, skill.options[index].correct);
     L.markRetry(state, skill.part.id, q.n, skill.options[index].correct, today());
+    if (skill.cat) {
+      const ok = skill.options[index].correct;
+      skill.cat.done++;
+      if (ok) skill.cat.right++;
+      // Οι επαναλήψεις λαθών δεν αλλάζουν το επίπεδο· μόνο οι ερωτήσεις του CAT.
+      if (!skill.due.has(q.n)) skill.cat.level = L.nextLevel(skill.cat.level, ok, 5);
+    }
     save();
     render();
     document.querySelector('.explain').scrollIntoView({ block: 'nearest' });
@@ -778,13 +804,14 @@
       return `<button class="option ${look}" data-skill-pick="${i}" ${answered ? 'disabled' : ''}>${label}</button>`;
     }).join('');
     const right = answered && options[picked].correct;
+    const levelNote = skill.cat && answered && !skill.due.has(q.n) ? ` · επόμενο επίπεδο ${skill.cat.level}` : '';
     const rightIndex = options.findIndex((opt) => opt.correct);
     const rightLabel = part.fixed ? options[rightIndex].t : LETTERS[rightIndex];
     app.innerHTML = `<div class="study">
       <div class="study-top">
         <button class="close" data-do="skill-exit" aria-label="Έξοδος">${ICONS.close}</button>
-        <div class="bar"><i style="width:${stats.answered / stats.total * 100}%"></i></div>
-        <span class="count">${num(stats.answered)} / ${num(stats.total)}</span>
+        <div class="bar"><i style="width:${skill.cat ? skill.cat.level / 5 * 100 : stats.answered / stats.total * 100}%"></i></div>
+        <span class="count">${skill.cat ? `Επίπεδο ${skill.cat.level} · ${num(skill.cat.right)}/${num(skill.cat.done)}` : `${num(stats.answered)} / ${num(stats.total)}`}</span>
       </div>
       <div class="study-body ${answered ? '' : 'enter'}">
         <div class="tag"><b>${esc(part.name)}</b><span>${skill.due.has(q.n) ? 'Επανάληψη λάθους · ' : ''}${q.lvl ? `Επίπεδο ${q.lvl} από 5 · ` : ''}${esc(q.tag || `Ερώτηση ${q.n}`)}</span></div>
@@ -794,7 +821,7 @@
         ${answered ? `<div class="explain"><b>${part.id === 'inductive' ? 'Μοτίβο' : 'Εξήγηση (όχι επίσημη)'}</b><p>${esc(q.e)}</p></div>` : ''}
       </div>
       ${answered ? `<div class="feedback" aria-live="polite">
-        <p class="verdict ${right ? 'good' : 'bad'}">${right ? 'Σωστά' : `Λάθος <small>· Σωστή η ${esc(rightLabel)}</small>`}</p>
+        <p class="verdict ${right ? 'good' : 'bad'}">${right ? `Σωστά <small>${levelNote}</small>` : `Λάθος <small>· Σωστή η ${esc(rightLabel)}${levelNote}</small>`}</p>
         <div class="fb-actions"><button class="btn primary solo" data-do="skill-next">Επόμενη</button></div>
       </div>` : ''}
     </div>`;

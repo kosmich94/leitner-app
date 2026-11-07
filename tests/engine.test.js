@@ -143,9 +143,9 @@ test('αντίγραφο ασφαλείας: δέχεται έγκυρο, απο
   assert.throws(() => L.validateBackup({ app: 'leitner', state: { ...st, cards: { x: { b: 9, d: 1 } } } }));
 });
 
-test('οι δεξιότητες έχουν 27 σενάρια και 87 επαγωγικά, με εικόνα ή κείμενο και εξήγηση', () => {
+test('οι δεξιότητες έχουν 27 σενάρια και 132 επαγωγικά, με εικόνα ή κείμενο και εξήγηση', () => {
   const { parts } = JSON.parse(fs.readFileSync(path.join(__dirname, '../skills.json'), 'utf8'));
-  assert.deepEqual(parts.map((p) => [p.id, p.items.length]), [['work', 27], ['inductive', 87]]);
+  assert.deepEqual(parts.map((p) => [p.id, p.items.length]), [['work', 27], ['inductive', 132]]);
   const items = parts.flatMap((p) => p.items);
   assert.ok(items.every((q) => q.a >= 0 && q.a < q.o.length && q.e && (q.q || q.img)));
   assert.ok(parts[0].items.every((q) => q.o.length === 4));
@@ -171,7 +171,7 @@ test('λεκτικός και τριάδες: 70 κείμενα με 4 δηλώ�
   assert.equal(triads.length, 76);
   assert.equal(new Set(triads.flat()).size, 228);
   assert.ok(parts[1].items.every((q) => [1, 2, 3, 4, 5].includes(q.lvl)));
-  assert.ok([1, 2, 3, 4, 5].every((l) => parts[1].items.filter((q) => q.lvl === l).length >= 8));
+  assert.ok([1, 2, 3, 4, 5].every((l) => parts[1].items.filter((q) => q.lvl === l).length >= 18));
 });
 
 test('η προσαρμοστική επιλογή ανεβαίνει με σωστές, κατεβαίνει με λάθος και δεν επαναλαμβάνει', () => {
