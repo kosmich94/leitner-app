@@ -269,7 +269,7 @@
   }
 
   /* Προσομοιώσεις με χρόνο. Η δυσκολία προσαρμόζεται όπως στα τεστ CAT: σωστή → δυσκολότερη, λάθος → ευκολότερη. */
-  const nextLevel = (level, isCorrect) => Math.max(1, Math.min(3, level + (isCorrect ? 1 : -1)));
+  const nextLevel = (level, isCorrect, max = 5) => Math.max(1, Math.min(max, level + (isCorrect ? 1 : -1)));
 
   function pickAdaptive(pool, level, used, rng = Math.random) {
     for (const step of [0, 1, -1, 2, -2]) {
@@ -280,10 +280,10 @@
   }
 
   /** Βαθμός 0-100 όπου οι δυσκολότερες σωστές μετρούν περισσότερο. */
-  function adaptiveScore(results) {
+  function adaptiveScore(results, max = 5) {
     if (!results.length) return 0;
     const earned = results.reduce((sum, r) => sum + (r.ok ? r.lvl : 0), 0);
-    return Math.round((earned / (results.length * 3)) * 100);
+    return Math.round((earned / (results.length * max)) * 100);
   }
 
   const knowledgeExam = (questions, count = 25, rng = Math.random) => shuffled(questions, rng).slice(0, count);

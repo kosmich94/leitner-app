@@ -143,9 +143,9 @@ test('αντίγραφο ασφαλείας: δέχεται έγκυρο, απο
   assert.throws(() => L.validateBackup({ app: 'leitner', state: { ...st, cards: { x: { b: 9, d: 1 } } } }));
 });
 
-test('οι δεξιότητες έχουν 27 σενάρια και 60 επαγωγικά, με εικόνα ή κείμενο και εξήγηση', () => {
+test('οι δεξιότητες έχουν 27 σενάρια και 87 επαγωγικά, με εικόνα ή κείμενο και εξήγηση', () => {
   const { parts } = JSON.parse(fs.readFileSync(path.join(__dirname, '../skills.json'), 'utf8'));
-  assert.deepEqual(parts.map((p) => [p.id, p.items.length]), [['work', 27], ['inductive', 60]]);
+  assert.deepEqual(parts.map((p) => [p.id, p.items.length]), [['work', 27], ['inductive', 87]]);
   const items = parts.flatMap((p) => p.items);
   assert.ok(items.every((q) => q.a >= 0 && q.a < q.o.length && q.e && (q.q || q.img)));
   assert.ok(parts[0].items.every((q) => q.o.length === 4));
@@ -170,17 +170,20 @@ test('λεκτικός και τριάδες: 70 κείμενα με 4 δηλώ�
   assert.ok(reading.every((t) => t.st.length === 4 && t.st.every((x) => x.a >= 0 && x.a <= 2 && x.e) && [1, 2, 3].includes(t.lvl)));
   assert.equal(triads.length, 76);
   assert.equal(new Set(triads.flat()).size, 228);
-  assert.ok(parts[1].items.every((q) => [1, 2, 3].includes(q.lvl)));
+  assert.ok(parts[1].items.every((q) => [1, 2, 3, 4, 5].includes(q.lvl)));
+  assert.ok([1, 2, 3, 4, 5].every((l) => parts[1].items.filter((q) => q.lvl === l).length >= 8));
 });
 
 test('η προσαρμοστική επιλογή ανεβαίνει με σωστές, κατεβαίνει με λάθος και δεν επαναλαμβάνει', () => {
   assert.equal(L.nextLevel(2, true), 3);
-  assert.equal(L.nextLevel(3, true), 3);
+  assert.equal(L.nextLevel(3, true), 4);
+  assert.equal(L.nextLevel(5, true), 5);
+  assert.equal(L.nextLevel(3, true, 3), 3);
   assert.equal(L.nextLevel(1, false), 1);
   const pool = [{ n: 1, lvl: 1 }, { n: 2, lvl: 2 }, { n: 3, lvl: 3 }];
   const used = new Set([3]);
   assert.equal(L.pickAdaptive(pool, 3, used).n, 2);
-  assert.equal(L.adaptiveScore([{ lvl: 3, ok: true }, { lvl: 1, ok: false }]), 50);
+  assert.equal(L.adaptiveScore([{ lvl: 5, ok: true }, { lvl: 1, ok: false }]), 50);
   assert.equal(L.knowledgeExam(questions, 25).length, 25);
   const st = L.newState();
   L.recordExam(st, 'knowledge', 80, T);

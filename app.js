@@ -458,7 +458,7 @@
         <li>Δεν βγαίνεις από την αίθουσα πριν τελειώσουν όλες οι δοκιμασίες.</li></ul></section>
       <section class="card"><h2>Συμβουλές</h2><ul class="facts">
         <li>Γνώσεις: περίπου 1 λεπτό ανά ερώτηση. Διάβασε όλες τις επιλογές πριν πατήσεις.</li>
-        <li>Επαγωγικός: περίπου 80″ ανά ερώτηση. Ψάξε πρώτα κίνηση, πλήθος, χρώμα και περιστροφή. Αν κολλήσεις πάνω από ένα λεπτό, απόκλεισε ό,τι δεν ταιριάζει, διάλεξε και προχώρα.</li>
+        <li>Επαγωγικός: περίπου 80″ ανά ερώτηση. Στην εφαρμογή οι ασκήσεις έχουν 5 επίπεδα· η προσομοίωση ξεκινά από το 3 και ανεβαίνει ή κατεβαίνει με κάθε απάντηση. Ψάξε πρώτα κίνηση, πλήθος, χρώμα και περιστροφή. Αν κολλήσεις πάνω από ένα λεπτό, απόκλεισε ό,τι δεν ταιριάζει, διάλεξε και προχώρα.</li>
         <li>Λεκτικός: «Λάθος» σημαίνει ότι το κείμενο λέει το αντίθετο. «Δεν μπορεί» σημαίνει ότι το κείμενο δεν το λέει, ακόμη κι αν είναι αληθινό στην πραγματικότητα.</li>
         <li>Τριάδες: περίπου 23″ ανά τριάδα. Απάντα με βάση το πώς δουλεύεις συνήθως και τελείωσε και τις 76.</li></ul></section>
       <section class="card"><h2>Πηγές</h2><ul class="facts links">
@@ -483,7 +483,7 @@
       startReading();
       return;
     }
-    reader = { queue, due, pos: 0, picks: [null, null, null, null], checked: false };
+    reader = { queue, due, pos: 0, picks: [null, null, null, null], checked: false, anim: true };
     view = 'reading';
     render();
     window.scrollTo(0, 0);
@@ -505,6 +505,8 @@
   function renderReading() {
     const text = reader.queue[reader.pos];
     const rp = readingProgress();
+    const animate = reader.anim;
+    reader.anim = false;
     const ready = reader.picks.every((x) => x !== null);
     const right = reader.picks.filter((v, i) => v === text.st[i].a).length;
     app.innerHTML = `<div class="study">
@@ -513,7 +515,7 @@
         <div class="bar"><i style="width:${rp.answered / rp.total * 100}%"></i></div>
         <span class="count">${num(rp.answered)} / ${num(rp.total)}</span>
       </div>
-      <div class="study-body ${reader.checked ? '' : 'enter'}">
+      <div class="study-body ${animate ? 'enter' : ''}">
         <div class="tag"><b>Λεκτικός συλλογισμός</b><span>${reader.due.has(text.n) ? 'Επανάληψη λάθους · ' : ''}Επίπεδο ${text.lvl} από 3</span></div>
         <p class="passage">${esc(text.text)}</p>
         <p class="sub">Σ = Σωστό · Λ = Λάθος · Δ = Δεν μπορεί να απαντηθεί</p>
@@ -545,7 +547,7 @@
   function startRun(kind) {
     if (!skillData && kind !== 'knowledge') return;
     const r = RUNS[kind];
-    run = { kind, ...r, endAt: Date.now() + r.minutes * 60e3, startedAt: Date.now(), pos: 0, results: [], level: 2, used: new Set(), choice: null, finished: false };
+    run = { kind, ...r, endAt: Date.now() + r.minutes * 60e3, startedAt: Date.now(), pos: 0, results: [], level: kind === 'inductive' ? 3 : 2, maxLevel: kind === 'inductive' ? 5 : 3, used: new Set(), choice: null, finished: false, anim: true };
     if (kind === 'knowledge') {
       run.items = L.knowledgeExam(questions, r.count);
       run.options = L.arrangeOptions(run.items[0]);
@@ -573,12 +575,13 @@
     run.results.push(record);
     run.pos++;
     run.choice = null;
+    run.anim = true;
     if (run.pos >= run.count) return finishRun(false);
     if (run.kind === 'knowledge') run.options = L.arrangeOptions(run.items[run.pos]);
     if (run.kind === 'inductive') L.markRetry(state, 'inductive', record.q.n, record.ok, today());
     if (run.kind === 'reading') L.markRetry(state, 'reading', record.q.n, record.right === 4, today());
     if (run.kind === 'inductive' || run.kind === 'reading') {
-      run.level = L.nextLevel(run.level, record.ok);
+      run.level = L.nextLevel(run.level, record.ok, run.maxLevel);
       nextAdaptive();
       if (!run.current) return finishRun(false);
     }
@@ -612,7 +615,7 @@
     run.usedSec = Math.round((Math.min(Date.now(), run.endAt) - run.startedAt) / 1000);
     const res = run.results;
     if (run.kind === 'knowledge') run.score = Math.round(res.filter((r) => r.ok).length / run.count * 100);
-    if (run.kind === 'inductive') run.score = L.adaptiveScore(res.concat(Array(run.count - res.length).fill({ lvl: 1, ok: false })));
+    if (run.kind === 'inductive') run.score = L.adaptiveScore(res.concat(Array(run.count - res.length).fill({ lvl: 1, ok: false })), 5);
     if (run.kind === 'reading') {
       run.right = res.reduce((n, r) => n + r.right, 0);
       run.score = Math.round(run.right / (run.count * 4) * 100);
@@ -678,7 +681,9 @@
         <p class="stem long">${step}</p><div class="options">${options}</div>`;
       action = '';
     }
-    app.innerHTML = `<div class="study">${runTop()}<div class="study-body enter">${body}</div>
+    const enter = run.anim ? 'enter' : '';
+    run.anim = false;
+    app.innerHTML = `<div class="study">${runTop()}<div class="study-body ${enter}">${body}</div>
       ${action ? `<div class="feedback"><div class="fb-actions">${action}</div></div>` : ''}</div>`;
   }
 
@@ -722,7 +727,10 @@
   function startSkill(id) {
     const part = skillPart(id);
     const due = new Set(L.retryDue(state, id, today()));
-    const queue = [...L.shuffled(part.items.filter((q) => due.has(q.n))), ...L.skillQueue(state, part).filter((q) => !due.has(q.n))];
+    const fresh = L.skillQueue(state, part).filter((q) => !due.has(q.n));
+    // Ο επαγωγικός πηγαίνει από τα εύκολα στα δύσκολα· μέσα σε κάθε επίπεδο η σειρά είναι τυχαία.
+    if (id === 'inductive') fresh.sort((a, b) => a.lvl - b.lvl);
+    const queue = [...L.shuffled(part.items.filter((q) => due.has(q.n))), ...fresh];
     skill = { part, due, queue, pos: 0, options: null, picked: null };
     if (!queue.length) {
       view = 'skillDone';
@@ -779,7 +787,7 @@
         <span class="count">${num(stats.answered)} / ${num(stats.total)}</span>
       </div>
       <div class="study-body ${answered ? '' : 'enter'}">
-        <div class="tag"><b>${esc(part.name)}</b><span>${skill.due.has(q.n) ? 'Επανάληψη λάθους · ' : ''}${esc(q.tag || `Ερώτηση ${q.n}`)}</span></div>
+        <div class="tag"><b>${esc(part.name)}</b><span>${skill.due.has(q.n) ? 'Επανάληψη λάθους · ' : ''}${q.lvl ? `Επίπεδο ${q.lvl} από 5 · ` : ''}${esc(q.tag || `Ερώτηση ${q.n}`)}</span></div>
         ${q.img ? `<img class="puzzle" src="${esc(q.img)}" alt="${esc(part.name)}, ερώτηση ${q.n}">` : ''}
         ${q.q ? `<p class="stem long">${esc(q.q)}</p>` : ''}
         <div class="options ${part.fixed ? 'letters' : ''}">${buttons}</div>
@@ -992,6 +1000,7 @@
       }
       reader.picks = [null, null, null, null];
       reader.checked = false;
+      reader.anim = true;
       render();
       window.scrollTo(0, 0);
     },

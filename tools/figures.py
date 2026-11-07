@@ -129,7 +129,7 @@ def shape(kind, **kw):
 def several(kind, n, fill='#fff'):
     r = 14
     xs = {1: [50], 2: [32, 68], 3: [22, 50, 78]}[n]
-    return ''.join({'c': circle(r, x, 50, fill), 's': square(r - 1, x, 50, fill), 't': poly(3, r + 2, x, 52, fill)}[kind] for x in xs)
+    return ''.join({'c': circle(r, x, 50, fill), 's': square(r - 2.5, x, 50, fill), 't': poly(3, r + 2, x, 52, fill)}[kind] for x in xs)
 
 
 def poly_dots(sides, n):
@@ -403,7 +403,7 @@ def generated_items(seed=7):
         good = st(4)
         wrong = [corner_box((deg0 + 3 * dstep) % 360, (d0 - 4) % 4, (t0 + 4) % 4), corner_box((deg0 + 4 * dstep) % 360, (d0 - 3) % 4, (t0 + 4) % 4),
                  corner_box((deg0 + 4 * dstep) % 360, (d0 - 4) % 4, (t0 + 3) % 4), corner_box((deg0 + 4 * dstep + 180) % 360, (d0 - 4) % 4, (t0 + 5) % 4)]
-        seq([st(k) for k in range(4)], good, wrong, 3,
+        seq([st(k) for k in range(4)], good, wrong, 4,
             f'Τρεις κανόνες μαζί: το βέλος στρέφεται {abs(dstep)}° {"δεξιόστροφα" if dstep > 0 else "αριστερόστροφα"}, '
             'η μαύρη κουκκίδα πάει μία γωνία αριστερόστροφα και το τρίγωνο μία γωνία δεξιόστροφα.')
     fills = {'w': '#fff', 'g': '#9a9a9a', 'b': INK}
@@ -477,7 +477,10 @@ def grid4(marks):
             out += rect(14 + c * 18, 14 + r * 18, 18, 18, sw=1.4)
     for c, r, kind in marks:
         x, y = 23 + c * 18, 23 + r * 18
-        out += circle(6, x, y, INK) if kind == 'b' else circle(6, x, y, '#fff') if kind == 'w' else poly(3, 7.5, x, y + 1, INK)
+        if kind in ('b', 'w'):
+            out += circle(6, x, y, INK if kind == 'b' else '#fff')
+        else:
+            out += poly(3, 7.5, x, y + 1, '#fff' if kind == 'tw' else INK)
     return out
 
 
@@ -542,7 +545,7 @@ def generated_items_2025(seed=2025):
         fig = lambda s, d: poly(s, 38, rot=-90 if s % 2 else -90 + 180 / s) + dots(d, 50, 52, 15, 3.4)
         s4, d4 = states[4]
         wrong = [fig(d4, s4), fig(s4, d4 - 1), fig(s4 + 1, d4), fig(s4, d4 + 1)]
-        seq([fig(*st) for st in states[:4]], fig(s4, d4), wrong, 3,
+        seq([fig(*st) for st in states[:4]], fig(s4, d4), wrong, 4,
             'Οι κουκκίδες κάθε καρέ δίνουν τις πλευρές του επόμενου σχήματος, και οι νέες κουκκίδες είναι οι πλευρές του προηγούμενου συν μία.')
 
     # 4. Τρία στοιχεία κινούνται μαζί σε πλέγμα 4x4.
@@ -557,7 +560,7 @@ def generated_items_2025(seed=2025):
         variants = [[pos(3)[0], w, t], [b, pos(5)[1], t], [b, w, pos(3)[2]], [(w[0], w[1], 'b'), (b[0], b[1], 'w'), t]]
         if any(len({(c, r) for c, r, _ in v}) < 3 for v in variants) or len({grid4(v) for v in variants} | {grid4(good)}) < 5:
             continue
-        seq([grid4(pos(k)) for k in range(4)], grid4(good), [grid4(v) for v in variants], 3,
+        seq([grid4(pos(k)) for k in range(4)], grid4(good), [grid4(v) for v in variants], 4,
             'Τρεις κανόνες μαζί: η μαύρη κουκκίδα πάει μία θέση δεξιά, η λευκή μία θέση κάτω και το τρίγωνο μία θέση διαγώνια. Στην άκρη ξαναρχίζουν από την αρχή.')
         made += 1
 
@@ -578,8 +581,133 @@ def generated_items_2025(seed=2025):
     return out
 
 
+# ---------- Πολύ δύσκολες ασκήσεις (επίπεδα 4 και 5) ----------
+# Επίπεδο 4: τρεις κανόνες ή κανόνες με μεταβαλλόμενο βήμα. Επίπεδο 5: τέσσερις κανόνες ή αριθμητικές σχέσεις.
+# Κάθε λάθος επιλογή παραβιάζει έναν μόνο κανόνα, ώστε να μη λύνεται με αποκλεισμό του προφανούς.
+
+FILLS = {'w': '#fff', 'g': '#9a9a9a', 'b': INK}
+
+
+def boxed_dots(kind, fill, n):
+    dot = '#fff' if fill == 'b' else INK
+    return any_shape(kind, 38, fill=FILLS[fill]) + dots(n, 50, 52, 15, 3.4, dot)
+
+
+def generated_items_hard(seed=4040):
+    rng = random_module.Random(seed)
+    out = []
+
+    def add(figure_fn, frames, correct, wrong, lvl, why):
+        options, answer = place(rng, correct, wrong)
+        out.append((figure_fn(frames + [None], options), answer, why, lvl))
+
+    # Επίπεδο 4α: πίνακας 3x3 με τρία χαρακτηριστικά (σχήμα, απόχρωση, πλήθος), καθένα μία φορά ανά γραμμή και στήλη.
+    for _ in range(3):
+        kinds, tones, counts = rng.sample(['c', 's', 't'], 3), rng.sample(['w', 'g', 'b'], 3), rng.sample([1, 2, 3], 3)
+        attr = lambda r, c: (kinds[(r + c) % 3], tones[(r + 2 * c) % 3], counts[(2 * r + c) % 3])
+        draw = lambda k, t, n: several(k, n, FILLS[t])
+        k, t, n = attr(2, 2)
+        ok_ = [x for x in 'cst' if x != k]
+        ot = [x for x in 'wgb' if x != t]
+        on = [x for x in (1, 2, 3) if x != n]
+        wrong = [draw(ok_[0], t, n), draw(k, ot[0], n), draw(k, t, on[0]), draw(ok_[1], ot[1], n)]
+        add(matrix_figure, [draw(*attr(r, c)) for r in range(3) for c in range(3)][:8], draw(k, t, n), wrong, 4,
+            'Τρία χαρακτηριστικά, καθένα μία φορά σε κάθε γραμμή και στήλη: σχήμα, απόχρωση και πλήθος. Έλεγξε και τα τρία χωριστά.')
+
+    # Επίπεδο 4β: βήμα που μεγαλώνει (1, 2, 3, 4) για τη μαύρη, σταθερό για τη λευκή.
+    made = 0
+    while made < 3:
+        b0, w0, wstep = rng.randrange(8), rng.randrange(8), rng.choice([-1, 2])
+        b = lambda k: (b0 + k * (k + 1) // 2) % 8
+        w = lambda k: (w0 + wstep * k) % 8
+        if any(b(k) == w(k) for k in range(5)):
+            continue
+        cand = [(b(3) + 3, w(4)), (b(4), w(3)), (b(4) + 1, w(4)), (b(4), w(4) + wstep), (w(4), b(4))]
+        wrong = []
+        for bb, ww in cand:
+            bb, ww = bb % 8, ww % 8
+            if bb != ww and (bb, ww) != (b(4), w(4)) and (bb, ww) not in wrong:
+                wrong.append((bb, ww))
+        if len(wrong) < 4:
+            continue
+        add(sequence_figure, [ring2(b(k), w(k)) for k in range(4)], ring2(b(4), w(4)), [ring2(*x) for x in wrong[:4]], 4,
+            f'Η μαύρη κουκκίδα προχωρά δεξιόστροφα με βήμα που μεγαλώνει: 1, 2, 3 και μετά 4 θέσεις. Η λευκή κινείται σταθερά {abs(wstep)} {"θέση" if abs(wstep) == 1 else "θέσεις"} {"αριστερόστροφα" if wstep < 0 else "δεξιόστροφα"}.')
+        made += 1
+
+    # Επίπεδο 4γ: περιστροφή που εναλλάσσει +90° και −45°, και κουκκίδες που εναλλάσσουν +2 και −1.
+    for a0, d0 in ((0, 1), (45, 2), (90, 1)):
+        ang = [a0, a0 + 90, a0 + 45, a0 + 135, a0 + 90]
+        cnt = [d0, d0 + 2, d0 + 1, d0 + 3, d0 + 2]
+        f = lambda a, n: arrow(a % 360) + dots(n, 84, 16, 12, 3.2)
+        wrong = [f(ang[3] + 90, cnt[4]), f(ang[4], cnt[4] + 2), f(ang[4] + 45, cnt[4]), f(ang[4] + 180, cnt[3] - 1)]
+        add(sequence_figure, [f(ang[k], cnt[k]) for k in range(4)], f(ang[4], cnt[4]), wrong, 4,
+            'Δύο κανόνες με εναλλασσόμενο βήμα: το βέλος στρέφεται +90° και μετά −45°, ξανά και ξανά, και οι κουκκίδες +2 και μετά −1.')
+
+    # Επίπεδο 4δ: σχήματα μέσα σε σχήματα που μετακινούνται, με το εσωτερικό μαύρο κάθε δεύτερο καρέ.
+    for _ in range(3):
+        order = rng.sample(KIND_LIST, 6)
+        layers = lambda k: [order[(k + i) % 6] for i in range(3)]
+        sizes = [40, 27, 15]
+        fig = lambda ks, black: ''.join(any_shape(kk, sizes[i], fill=INK if (i == 2 and black) else '#fff') for i, kk in enumerate(ks))
+        good = fig(layers(4), True)
+        wrong = [fig(layers(4), False), fig(list(reversed(layers(4))), True), fig(layers(3), True), fig(layers(5), True)]
+        add(sequence_figure, [fig(layers(k), k % 2 == 0) for k in range(4)], good, wrong, 4,
+            'Δύο κανόνες: κάθε σχήμα περνά ένα επίπεδο πιο έξω και μπαίνει νέο στο κέντρο, ενώ το εσωτερικό είναι μαύρο κάθε δεύτερο καρέ.')
+
+    # Επίπεδο 5α: κουκκίδες όπου κάθε πλήθος είναι το άθροισμα των δύο προηγούμενων, με εναλλαγή σχήματος και χρώματος.
+    for a, b0 in ((1, 2), (2, 1), (1, 3), (2, 3), (3, 1)):
+        cnt = [a, b0]
+        for _ in range(3):
+            cnt.append(cnt[-1] + cnt[-2])
+        kind = lambda k: 'c' if k % 2 == 0 else 's'
+        tone = lambda k: 'b' if (k // 2) % 2 == 1 else 'w'
+        good = boxed_dots(kind(4), tone(4), cnt[4])
+        wrong = [boxed_dots(kind(4), tone(4), cnt[4] + 1), boxed_dots(kind(4), tone(4), cnt[4] - 1),
+                 boxed_dots(kind(3), tone(4), cnt[4]), boxed_dots(kind(4), 'b', cnt[4])]
+        add(sequence_figure, [boxed_dots(kind(k), tone(k), cnt[k]) for k in range(4)], good, wrong, 5,
+            'Τρεις κανόνες: οι κουκκίδες είναι το άθροισμα των δύο προηγούμενων πλήθων, το σχήμα εναλλάσσεται κύκλος–τετράγωνο και το χρώμα αλλάζει ανά δύο καρέ (λευκό, λευκό, μαύρο, μαύρο, λευκό).')
+
+    # Επίπεδο 5β: τέσσερις κανόνες σε πλέγμα 4x4.
+    made = 0
+    while made < 5:
+        b0, w0, t0 = (rng.randrange(4), rng.randrange(4)), (rng.randrange(4), rng.randrange(4)), (rng.randrange(4), rng.randrange(4))
+        pos = lambda k: [((b0[0] + k * (k + 1) // 2) % 4, b0[1], 'b'), (w0[0], (w0[1] + k) % 4, 'w'),
+                         ((t0[0] + k) % 4, (t0[1] + k) % 4, 't' if k % 2 == 0 else 'tw')]
+        if any(len({(c, r) for c, r, _ in pos(k)}) < 3 for k in range(5)):
+            continue
+        good = pos(4)
+        bb, ww, tt = good
+        nxt = ((pos(3)[0][0] + 1) % 4, bb[1], 'b')
+        variants = [[nxt, ww, tt], [bb, pos(3)[1], tt], [bb, ww, (tt[0], tt[1], 'tw')], [bb, ww, (pos(3)[2][0], pos(3)[2][1], 't')]]
+        if any(len({(c, r) for c, r, _ in v}) < 3 for v in variants) or len({grid4(v) for v in variants} | {grid4(good)}) < 5:
+            continue
+        add(sequence_figure, [grid4(pos(k)) for k in range(4)], grid4(good), [grid4(v) for v in variants], 5,
+            'Τέσσερις κανόνες: η μαύρη κουκκίδα πάει δεξιά με βήμα 1, 2, 3, 4· η λευκή μία θέση κάτω· το τρίγωνο μία θέση διαγώνια· και το τρίγωνο εναλλάσσεται μαύρο–λευκό.')
+        made += 1
+
+    # Επίπεδο 5γ: πίνακας όπου η τρίτη στήλη έχει το άθροισμα των κουκκίδων και κάθε γραμμή άλλο σχήμα.
+    for _ in range(5):
+        kinds = rng.sample(['c', 's', 'p'], 3)
+        rows = []
+        for r in range(3):
+            x, y = rng.randint(1, 4), rng.randint(1, 4)
+            rows.append((x, y, x + y))
+        cell = lambda r, c: any_shape(kinds[(r + c) % 3], 38) + dots(rows[r][c], 50, 52, 15, 3.2)
+        k = kinds[(2 + 2) % 3]
+        n = rows[2][2]
+        other = [x for x in kinds if x != k]
+        good = any_shape(k, 38) + dots(n, 50, 52, 15, 3.2)
+        wrong = [any_shape(k, 38) + dots(n + 1, 50, 52, 15, 3.2), any_shape(k, 38) + dots(abs(rows[2][0] - rows[2][1]) or n + 2, 50, 52, 15, 3.2),
+                 any_shape(other[0], 38) + dots(n, 50, 52, 15, 3.2), any_shape(other[1], 38) + dots(n - 1, 50, 52, 15, 3.2)]
+        if len(set(wrong + [good])) < 5:
+            continue
+        add(matrix_figure, [cell(r, c) for r in range(3) for c in range(3)][:8], good, wrong, 5,
+            'Δύο κανόνες: σε κάθε γραμμή οι κουκκίδες της τρίτης στήλης είναι το άθροισμα των δύο πρώτων, και κάθε σχήμα εμφανίζεται μία φορά σε κάθε γραμμή και στήλη.')
+    return out
+
+
 def inductive_bank():
     """Όλες οι ασκήσεις επαγωγικού: (λεζάντα, svg, θέση σωστής, εξήγηση, επίπεδο)."""
     base = [(tag, figure, answer, why, lvl) for (tag, figure, answer, why), lvl in zip(inductive_items(), LEVELS)]
-    extra = [('Άσκηση εξάσκησης', figure, answer, why, lvl) for figure, answer, why, lvl in generated_items() + generated_items_2025()]
+    extra = [('Άσκηση εξάσκησης', figure, answer, why, lvl) for figure, answer, why, lvl in generated_items() + generated_items_2025() + generated_items_hard()]
     return base + extra

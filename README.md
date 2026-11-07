@@ -9,7 +9,7 @@
 - `questions.json`: οι ερωτήσεις, παραγόμενο αρχείο.
 - `tools/build_questions.py`: ξαναχτίζει τις ερωτήσεις από τα PDF.
 - `skills.json`, `skills/`: η ενότητα Δεξιότητες, παραγόμενα αρχεία.
-- `tools/build_skills.py`: ξαναχτίζει τις Δεξιότητες από τα PDF της δοκιμασίας (χρειάζεται PyMuPDF). Τα σχέδια είναι στο `tools/figures.py`, τα κείμενα λεκτικού στο `tools/reading.py` και οι τριάδες στο `tools/triads.py`.
+- `tools/build_skills.py`: ξαναχτίζει τις Δεξιότητες από τα PDF της δοκιμασίας (χρειάζεται PyMuPDF). Οι ασκήσεις επαγωγικού (5 επίπεδα δυσκολίας) σχεδιάζονται στο `tools/figures.py`, τα κείμενα λεκτικού στο `tools/reading.py` και οι τριάδες στο `tools/triads.py`.
 - `tests/engine.test.js`: δοκιμές με `node --test tests/engine.test.js`.
 
 ## Ενημέρωση
